@@ -3,6 +3,7 @@ import pino from 'pino'
 import cors from '@fastify/cors'
 import websocket from '@fastify/websocket'
 import type { Bot } from 'grammy'
+import type { Screen } from '@answered/protocol'
 import type { Config } from './config.js'
 import { openDb, type Db } from './db/index.js'
 import { ClaudeClassifier, FallbackClassifier, HeuristicClassifier, type Classifier } from './pipeline/classifier.js'
@@ -20,7 +21,9 @@ import { telegramRoutes } from './routes/telegram.js'
 import { SessionService } from './sessions.js'
 import { registerHandlers } from './telegram/handlers.js'
 import { Outbox } from './telegram/outbox.js'
-import { GlassesHub, glassesRoutes } from './ws/glasses.js'
+import { DEV, GlassesHub, glassesRoutes, type Viewer } from './ws/glasses.js'
+import { HostDirectory } from './hosts.js'
+import type { Session } from './sessions.js'
 
 export interface AppDeps {
   bot?: Bot
@@ -60,6 +63,7 @@ export interface App {
   publisher: QueuePublisher
   speech: SpeechService
   controller: HostController
+  hosts: HostDirectory
 }
 
 export async function buildApp(config: Config, deps: AppDeps = {}): Promise<App> {
@@ -68,14 +72,37 @@ export async function buildApp(config: Config, deps: AppDeps = {}): Promise<App>
   await app.register(cors, { origin: config.CORS_ORIGIN === '*' ? true : config.CORS_ORIGIN.split(',') })
   await app.register(websocket, { options: { maxPayload: 1 << 20 } })
 
-  // `speech` is created below; audio only arrives once the server is listening.
-  const hub = new GlassesHub(
-    app.log,
-    (pcm) => speech.audio(pcm),
-    (g, idx) => controller.input(g, idx),
-  )
   const db = openDb(config.DATABASE_URL)
   const sessions = new SessionService(db, deps.now)
+  const hosts = new HostDirectory(db, deps.now)
+
+  // Routing between glasses and sessions. A paired host's glasses follow their group's open session;
+  // the dev token (test scripts) follows the newest live session.
+  const sessionFor = (viewer: Viewer): Session | undefined => {
+    if (viewer === DEV) return sessions.active()
+    const host = hosts.get(viewer)
+    return host ? sessions.open(host.chatId) : undefined
+  }
+  const viewersOf = (session: Session): Viewer[] => [DEV, ...hosts.forChat(session.chatId).map((h) => h.id)]
+  const showSession = (sessionId: string, screen: Screen) => {
+    const session = sessions.get(sessionId)
+    if (session) hub.show(screen, viewersOf(session))
+  }
+
+  // `speech` and `controller` are created below; the hub only calls them once the server is listening.
+  const hub = new GlassesHub(app.log, {
+    audio: (pcm, viewer) => {
+      const session = sessionFor(viewer)
+      if (session?.status === 'live') speech.audio(pcm, session)
+    },
+    input: (g, idx, viewer) => controller.input(g, idx, viewer),
+    screenFor: (viewer) => {
+      const session = sessionFor(viewer)
+      if (session?.status === 'live') return controller.screen(session.id)
+      const host = viewer === DEV ? undefined : hosts.get(viewer)
+      return host ? { view: 'lobby', group: host.chatTitle } : undefined
+    },
+  })
   const outbox =
     deps.outbox ??
     new Outbox({ onRateLimited: (i) => app.log.warn(i, 'telegram rate limit hit; outbox paused') })
@@ -88,8 +115,7 @@ export async function buildApp(config: Config, deps: AppDeps = {}): Promise<App>
       : new HeuristicClassifier())
   app.log.info({ classifier: classifier.name }, 'question classifier')
 
-  // Until pairing ties glasses to a host (phase 5), the glasses follow whichever session is live.
-  const publisher = new QueuePublisher({ store, sessions, show: (screen) => hub.show(screen), now: deps.now })
+  const publisher = new QueuePublisher({ store, sessions, show: (screen, sessionId) => showSession(sessionId, screen), now: deps.now })
   const pipeline = new Pipeline({
     classifier,
     store,
@@ -109,7 +135,9 @@ export async function buildApp(config: Config, deps: AppDeps = {}): Promise<App>
       publisher.publishNow(e.session.id)
     } else {
       publisher.forget(e.session.id)
-      hub.show({ view: 'ended', answered: e.stats.answered, open: e.stats.open })
+      const viewers = viewersOf(e.session)
+      hub.show({ view: 'ended', answered: e.stats.answered, open: e.stats.open }, viewers)
+      controller.ended(viewers)
     }
   })
 
@@ -129,7 +157,27 @@ export async function buildApp(config: Config, deps: AppDeps = {}): Promise<App>
     speech,
     writer,
     judge,
-    show: (screen) => hub.show(screen),
+    show: showSession,
+    sessionFor,
+    lobby: {
+      goLive: (viewer) => {
+        const host = hosts.get(viewer)
+        if (!host) return
+        const { session } = sessions.start({ chatId: host.chatId, chatTitle: host.chatTitle, host: { tgUserId: host.tgUserId, name: host.name } })
+        app.log.info({ session: session.id, host: host.id }, 'session live (from glasses)')
+      },
+      unpair: (viewer) => {
+        hosts.unpair(viewer)
+        hub.unpair(viewer)
+        app.log.info({ host: viewer }, 'glasses unpaired')
+      },
+      showLobby: (viewer) => {
+        const host = hosts.get(viewer)
+        if (host) hub.show({ view: 'lobby', group: host.chatTitle }, [viewer])
+      },
+    },
+    endSession: (session) => sessions.end(session.chatId),
+    flagSpam: (session, clusterId) => writer.spam(session, clusterId),
     log: app.log,
     now: deps.now,
     undoMs: deps.undoMs ?? config.UNDO_MS,
@@ -148,7 +196,19 @@ export async function buildApp(config: Config, deps: AppDeps = {}): Promise<App>
     app.log.info({ session: session.id, chat: session.chatId }, 'resumed live session')
   }
 
-  if (deps.bot) registerHandlers(deps.bot, { sessions, outbox, store, pipeline, publisher, log: app.log, now: deps.now })
+  if (deps.bot) {
+    registerHandlers(deps.bot, {
+      sessions,
+      outbox,
+      store,
+      pipeline,
+      publisher,
+      hosts,
+      pairing: { waiting: (code) => hub.pairingWaiting(code), complete: (code, token, group) => hub.completePairing(code, token, group) },
+      log: app.log,
+      now: deps.now,
+    })
+  }
 
   app.get('/health', async () => ({
     ok: true,
@@ -158,7 +218,7 @@ export async function buildApp(config: Config, deps: AppDeps = {}): Promise<App>
   }))
 
   await app.register(telegramRoutes, { secret: config.TG_WEBHOOK_SECRET, bot: deps.bot })
-  await app.register(glassesRoutes, { hub, devToken: config.GLASSES_DEV_TOKEN })
+  await app.register(glassesRoutes, { hub, devToken: config.GLASSES_DEV_TOKEN, hostByToken: (t) => hosts.byToken(t)?.id })
   await app.register(debugRoutes, { devToken: config.GLASSES_DEV_TOKEN, sessions, speech })
   await app.register(evalRoutes, { classifier, devToken: config.GLASSES_DEV_TOKEN, fixturesPath: config.FIXTURES_PATH })
 
@@ -170,5 +230,5 @@ export async function buildApp(config: Config, deps: AppDeps = {}): Promise<App>
     db.close()
   })
 
-  return { app, hub, db, sessions, outbox, store, pipeline, publisher, speech, controller }
+  return { app, hub, db, sessions, outbox, store, pipeline, publisher, speech, controller, hosts }
 }

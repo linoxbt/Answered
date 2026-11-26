@@ -8,10 +8,31 @@ everyone who asked. A question that was only talked around stays open.
 Built for the [Heads Up: Even Realities Hackathon](https://dorahacks.io/hackathon/even-realities/detail)
 (Track 01 · Messaging & News). The build plan is in [docs/PHASES.md](docs/PHASES.md).
 
-> Status: **phases 0-4 of 0-7 done**: questions are detected and ranked, the host answers out loud, and Answered replies to everyone who asked.
-> Glasses screens, pairing, the recap and the demo tooling land in phases 5-6.
+> Status: **phases 0-5 of 0-7 done**: pairing, glasses screens, question ranking, spoken answers
+> and Telegram replies all work end to end. The pinned recap and demo tooling land in phase 6.
 
-![Phase 0 in the Even Hub simulator](docs/img/phase0-simulator.png)
+![Answered's screens in the Even Hub simulator](docs/img/glasses-screens.png)
+
+## Using it
+
+1. Add **@answereddbot** to your Telegram group as an admin (Pin messages, Delete messages).
+2. Open Answered on G2. The glasses show a code; an admin sends `/pair 4821` in the group.
+3. Press to go live (or send `/live`). The bot opens the Q&A in the group.
+4. The queue on the glasses ranks questions by how many people asked. Scroll with the ring,
+   press to take one, and answer out loud.
+5. When your answer really answers it, the glasses show "Sending to N in 3s" (press = now,
+   swipe = cancel) and the bot replies once, threaded, mentioning everyone who asked.
+   A question you only talked around stays open.
+6. Double-press twice to end.
+
+| Screen | Press | Swipe | Double | Long press |
+|---|---|---|---|---|
+| Pair | - | - | exit | - |
+| Lobby | go live | - | exit | forget pairing |
+| Queue | take selected | move selection (on the glasses) | end session (asks first) | flag as spam (deletes it) |
+| Taking | mark answered | skip | back to the queue | - |
+| Sending | send now | cancel | cancel | - |
+| End? | keep going | keep going | end | - |
 
 ## Layout
 
@@ -61,9 +82,10 @@ One service from this repo; Railway runs `pnpm start` (the server). Add a volume
 
 ### Packaging
 
-`pnpm --filter @answered/glasses pack` builds `answered.ehpk`. Before packing, put the
-deployed server's origins in `apps/glasses/app.json` → `network.whitelist` (both the
-`https://` and the `wss://` origin); requests to anything else are blocked on the device.
+`pnpm --filter @answered/glasses ehpk` builds `answered.ehpk` from `apps/glasses/.env.production`
+(the deployed server, no dev token). The deployed server's origins must be in `apps/glasses/app.json`
+→ `network.whitelist` (both the `https://` and the `wss://` origin); anything else is blocked on the device.
+(Not `pnpm pack`: that is pnpm's own npm-tarball command.)
 
 ### Headless simulator (Linux CI or cloud containers)
 

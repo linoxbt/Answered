@@ -25,9 +25,23 @@ export class ServerConnection {
   audioBytesSent = 0
 
   constructor(
-    private readonly url: string,
+    private url: string,
     private readonly events: ConnectionEvents,
   ) {}
+
+  /** Use a different URL (new token) from the next connection on. */
+  setUrl(url: string): void {
+    this.url = url
+  }
+
+  /** Drops the current socket and connects again straight away (e.g. after pairing). */
+  restart(): void {
+    const ws = this.ws
+    this.ws = undefined
+    ws?.close(1000, 'restart')
+    this.backoff = MIN_BACKOFF_MS
+    this.connect()
+  }
 
   connect(): void {
     this.stopped = false

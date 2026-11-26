@@ -102,6 +102,11 @@ const MIGRATIONS: string[] = [
   );
   CREATE INDEX votes_session ON votes(session_id);
   `,
+  /* 3: pairing ties a host (and their glasses) to one Telegram group */ `
+  ALTER TABLE hosts ADD COLUMN chat_id INTEGER;
+  ALTER TABLE hosts ADD COLUMN chat_title TEXT;
+  CREATE INDEX hosts_chat ON hosts(chat_id);
+  `,
 ]
 
 /** Opens (and migrates) the database. Accepts `file:./answered.db`, a plain path, or `:memory:`. */

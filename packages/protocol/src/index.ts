@@ -29,19 +29,27 @@ export interface QueueItem {
 
 export type Screen =
   | { view: 'status'; title: string; lines: string[] }
-  | { view: 'pair'; code: string; url: string }
-  | { view: 'lobby'; group: string; waiting: number }
+  /** Not paired yet: an admin sends `/pair <code>` in their Telegram group. */
+  | { view: 'pair'; code: string }
+  /** Paired, no live session: press to go live. */
+  | { view: 'lobby'; group: string }
   | { view: 'queue'; clock: string; open: number; items: QueueItem[]; group?: string; selected?: number }
   | { view: 'taking'; id: string; n: number; title: string }
   | { view: 'sending'; n: number; summary: string; seconds: number }
   | { view: 'answered'; n: number; summary: string }
   | { view: 'still_open' }
   | { view: 'ended'; answered: number; open: number }
+  /** Double-press in the queue asks before ending the session. */
+  | { view: 'confirm_end'; open: number }
 
 export type ServerMessage =
   | ({ t: 'screen' } & Screen)
   | { t: 'audio'; on: boolean; source?: MicSource }
   | { t: 'exit' }
+  /** Pairing done: store the token and reconnect with it. */
+  | { t: 'paired'; token: string; group: string }
+  /** The host forgot this pairing: drop the token and show a new code. */
+  | { t: 'unpaired' }
 
 export type View = Screen['view']
 

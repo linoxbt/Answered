@@ -133,7 +133,7 @@ export class Pipeline {
 export interface QueuePublisherOptions {
   store: ClusterStore
   sessions: SessionService
-  show: (screen: Screen) => void
+  show: (screen: Screen, sessionId: string) => void
   now?: () => number
   /** Spec: list rebuilds flicker, so at most one every 5 s. */
   minGapMs?: number
@@ -232,6 +232,6 @@ export class QueuePublisher {
     const last = this.last.get(sessionId)
     if (last?.signature === signature) return
     this.last.set(sessionId, { at: this.now(), signature })
-    this.o.show(screen)
+    this.o.show(screen, sessionId)
   }
 }

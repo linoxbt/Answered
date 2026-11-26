@@ -64,16 +64,17 @@ async function setup(judge: Judge) {
   closers.push(() => built.app.close())
   const screens: Screen[] = []
   const show = built.hub.show.bind(built.hub)
-  built.hub.show = (s) => {
-    if (s) screens.push(s)
-    show(s)
+  built.hub.show = (s, viewers) => {
+    screens.push(s)
+    show(s, viewers)
   }
   const { session } = built.sessions.start({ chatId: CHAT, chatTitle: 'Builders Hub', host: { tgUserId: 1, name: 'Host' } })
 
   let msg = 1
   const ask = (userId: number, name: string, text: string, canonical: string, cluster: string) => {
     const id = msg++
-    built.sessions.capture(CHAT, { messageId: id, userId, userName: name, text, at: Date.now() })
+    // Distinct ask times keep ranking ties deterministic (earlier question first).
+    built.sessions.capture(CHAT, { messageId: id, userId, userName: name, text, at: Date.now() - 60_000 + id * 1000 })
     built.store.apply(session.id, CHAT, [{ messageId: id, isQuestion: true, spam: false, canonical, cluster: built.store.assignable(session.id).find((c) => c.title === canonical)?.id ?? `new:${cluster}` }])
     return id
   }
@@ -85,7 +86,8 @@ async function setup(judge: Judge) {
     h.onEvent({ type: 'final', text, startAt: now - 1000, endAt: now, words: [], speechFinal: true })
     h.onEvent({ type: 'utterance_end', at: now })
   }
-  const sent = () => calls.filter((c) => c.method === 'sendMessage')
+  // The opening message ("Live Q&A has started") is posted on every session start; skip it.
+  const sent = () => calls.filter((c) => c.method === 'sendMessage' && !String(c.payload.text).startsWith('Live Q&A has started'))
   const reactions = () => calls.filter((c) => c.method === 'setMessageReaction')
   const view = () => screens.at(-1)?.view
   return { ...built, session, calls, screens, ask, say, sent, reactions, view }
@@ -129,7 +131,7 @@ describe('answer loop', () => {
 
     const mainnet = t.store.assignable(t.session.id).find((c) => c.title === MAINNET)!
     expect(mainnet.status).toBe('answered')
-    expect(t.store.answer(mainnet.id)).toMatchObject({ summary: 'Mainnet ships in Q1, testnet in December.', replyMessageId: 9000 })
+    expect(t.store.answer(mainnet.id)).toMatchObject({ summary: 'Mainnet ships in Q1, testnet in December.', replyMessageId: expect.any(Number) })
     expect(t.screens.some((s) => s.view === 'answered')).toBe(true)
     await until(() => t.view() === 'queue')
   })
@@ -242,7 +244,7 @@ describe('answer loop', () => {
     const repeat = t.sent()[1]!.payload
     expect(repeat).toMatchObject({ reply_parameters: { message_id: 50 } })
     expect(repeat.text).toContain('Answered earlier at')
-    expect(repeat.text).toContain('https://t.me/c/1234567890/9000')
+    expect(repeat.text).toContain(`https://t.me/c/1234567890/${t.store.answer(cluster.id)!.replyMessageId}`)
   })
 
   it('leaves gestures to the glasses when no session is live', async () => {

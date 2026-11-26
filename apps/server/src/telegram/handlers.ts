@@ -2,6 +2,7 @@ import type { Bot, Context } from 'grammy'
 import type { FastifyBaseLogger } from 'fastify'
 import type { ClusterStore } from '../pipeline/clusters.js'
 import type { Pipeline, QueuePublisher } from '../pipeline/index.js'
+import type { HostDirectory } from '../hosts.js'
 import type { SessionService } from '../sessions.js'
 import type { Outbox } from './outbox.js'
 
@@ -12,6 +13,9 @@ export interface HandlerDeps {
   store?: ClusterStore
   pipeline?: Pipeline
   publisher?: QueuePublisher
+  hosts?: HostDirectory
+  /** Glasses waiting with a pairing code (the glasses hub). */
+  pairing?: { waiting: (code: string) => boolean; complete: (code: string, token: string, group: string) => boolean }
   now?: () => number
 }
 
@@ -19,7 +23,11 @@ export const TEXT = {
   opening: 'Live Q&A has started. Ask your question here.\nQuestions asked by several people get answered first.',
   alreadyLive: 'A live Q&A is already running here. Send /end to close it.',
   notLive: 'There is no live Q&A in this group. An admin can start one with /live.',
-  adminsOnly: 'Only group admins can start or end a live Q&A.',
+  adminsOnly: 'Only group admins can start or end a live Q&A, or pair glasses.',
+  pairUsage: 'Send /pair followed by the 4-digit code shown on the glasses, for example /pair 4821.',
+  pairUnknown: 'That code is not waiting to pair. Check the glasses: codes change when the app restarts and expire after 10 minutes.',
+  paired: (name: string, group: string) =>
+    `Glasses paired: ${name} will host Q&A in ${group}. Press on the glasses (or send /live) to go live.`,
   groupsOnly: 'Add me to a group, make me an admin, then send /live there to start a Q&A.',
   addedNeedsAdmin:
     'Thanks for adding Answered. Make me an admin (with Pin messages and Delete messages) so I can read questions, see reactions and pin the recap. Then an admin can send /live.',
@@ -95,9 +103,22 @@ export function registerHandlers(bot: Bot, deps: HandlerDeps): void {
     if (!created) return say(chat.id, TEXT.alreadyLive, ctx.msg.message_id)
 
     log.info({ session: session.id, chat: chat.id }, 'session live')
-    send(chat.id, TEXT.opening)
-      .then((m) => sessions.setOpeningMessage(session.id, m.message_id))
-      .catch((err) => log.warn({ err, chat: chat.id }, 'opening message failed'))
+    // The opening message is posted by the 'started' listener below (also for glasses go-live).
+  })
+
+  bot.command('pair', async (ctx) => {
+    if (!isGroup(ctx)) return void (await ctx.reply(TEXT.groupsOnly))
+    const chat = ctx.chat
+    if (!(await isAdmin(ctx))) return say(chat.id, TEXT.adminsOnly, ctx.msg.message_id)
+    const code = ctx.match.trim()
+    if (!/^\d{4}$/.test(code)) return say(chat.id, TEXT.pairUsage, ctx.msg.message_id)
+    if (!deps.pairing?.waiting(code) || !deps.hosts) return say(chat.id, TEXT.pairUnknown, ctx.msg.message_id)
+    const sender = senderOf(ctx)!
+    const title = 'title' in chat ? (chat.title ?? 'Group') : 'Group'
+    const { host, token } = deps.hosts.pair({ tgUserId: sender.id, name: sender.name, chatId: chat.id, chatTitle: title })
+    if (!deps.pairing.complete(code, token, title)) return say(chat.id, TEXT.pairUnknown, ctx.msg.message_id)
+    log.info({ host: host.id, chat: chat.id }, 'glasses paired')
+    say(chat.id, TEXT.paired(sender.name, title), ctx.msg.message_id)
   })
 
   bot.command('end', async (ctx) => {
@@ -107,8 +128,18 @@ export function registerHandlers(bot: Bot, deps: HandlerDeps): void {
     const result = sessions.end(chat.id)
     if (!result) return say(chat.id, TEXT.notLive, ctx.msg.message_id)
     log.info({ session: result.session.id, ...result.stats }, 'session ended')
-    // Phase 6 replaces this with the pinned recap.
-    say(chat.id, TEXT.ended(result.stats.clusters, result.stats.answered))
+  })
+
+  // Posted for every start and end, whether it came from Telegram or from the glasses.
+  sessions.onEvent((e) => {
+    if (e.type === 'started') {
+      send(e.session.chatId, TEXT.opening)
+        .then((m) => sessions.setOpeningMessage(e.session.id, m.message_id))
+        .catch((err) => log.warn({ err, chat: e.session.chatId }, 'opening message failed'))
+    } else {
+      // Phase 6 replaces this with the pinned recap.
+      say(e.session.chatId, TEXT.ended(e.stats.clusters, e.stats.answered))
+    }
   })
 
   // Capture every other text message (and captions) while a session is live.
@@ -144,6 +175,7 @@ export function registerHandlers(bot: Bot, deps: HandlerDeps): void {
   // A basic group upgraded to a supergroup gets a new chat id.
   bot.on('message:migrate_to_chat_id', (ctx) => {
     sessions.migrateChat(ctx.chat.id, ctx.msg.migrate_to_chat_id)
+    deps.hosts?.migrateChat(ctx.chat.id, ctx.msg.migrate_to_chat_id)
     log.info({ from: ctx.chat.id, to: ctx.msg.migrate_to_chat_id }, 'group migrated to supergroup')
   })
 

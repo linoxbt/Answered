@@ -102,6 +102,20 @@ export class AnswerWriter {
       .catch((err) => this.o.log.warn({ err }, 'repeat reply failed'))
   }
 
+  /** Host flagged a question as spam: its messages are deleted from the group (bot needs Delete rights). */
+  spam(session: Session, clusterId: string): void {
+    const bot = this.o.bot
+    const ids = this.o.store.messageIds(clusterId)
+    this.o.store.skip(clusterId)
+    this.o.log.info({ cluster: clusterId, messages: ids.length }, 'question flagged as spam')
+    if (!bot) return
+    for (const id of ids) {
+      this.o.outbox
+        .enqueue(session.chatId, () => bot.api.deleteMessage(session.chatId, id), { label: 'deleteMessage' })
+        .catch((err) => this.o.log.warn({ err, messageId: id }, 'deleting spam failed (is the bot allowed to delete messages?)'))
+    }
+  }
+
   private react(chatId: number, messageId: number, emoji: '👀' | '👍'): void {
     const bot = this.o.bot
     if (!bot) return

@@ -4,6 +4,7 @@ import type { ClusterStore } from '../pipeline/clusters.js'
 import type { QueuePublisher } from '../pipeline/index.js'
 import type { Session, SessionService } from '../sessions.js'
 import type { SpeechService } from '../speech/index.js'
+import { DEV, type Viewer } from '../ws/glasses.js'
 import { rejection, type Judge, type JudgeQuestion, type Verdict } from './judge.js'
 import type { AnswerWriter } from './writer.js'
 
@@ -23,6 +24,7 @@ type Mode =
   | { kind: 'taking'; clusterId: string; takenS: number }
   | { kind: 'sending'; clusterId: string; takenS: number; batch: Pending[]; deadline: number; timer: ReturnType<typeof setInterval> }
   | { kind: 'flash'; next: Mode; timer: ReturnType<typeof setTimeout> }
+  | { kind: 'confirm_end' }
 
 export interface ControllerOptions {
   sessions: SessionService
@@ -31,7 +33,18 @@ export interface ControllerOptions {
   speech: SpeechService
   writer: AnswerWriter
   judge?: Judge
-  show: (screen: Screen) => void
+  /** Shows a screen on the glasses of everyone hosting this session. */
+  show: (sessionId: string, screen: Screen) => void
+  /** The session a viewer's gestures act on (their group's live session). */
+  sessionFor: (viewer: Viewer) => Session | undefined
+  /** What the glasses do when their group has no live session. */
+  lobby?: {
+    goLive: (viewer: Viewer) => void
+    unpair: (viewer: Viewer) => void
+    showLobby: (viewer: Viewer) => void
+  }
+  endSession: (session: Session) => void
+  flagSpam: (session: Session, clusterId: string) => void
   log: FastifyBaseLogger
   now?: () => number
   /** Undo window before an answer is posted (press = send now, swipe = cancel). */
@@ -51,9 +64,11 @@ export interface ControllerOptions {
  * the undo window, and what the glasses show. One per server; state per session.
  *
  * Gestures (spec input map; phase 5 refines the screens):
- *   queue    press = take selected · swipe = move selection · double = exit (handled by the glasses)
+ *   lobby    press = go live · long = forget pairing · double = exit
+ *   queue    press = take selected · swipe = move selection · long = flag spam · double = end session (asks first)
  *   taking   press = mark answered by hand · swipe = skip · double = put back in the queue
  *   sending  press = send now · swipe or double = cancel (back to taking)
+ *   confirm  double = end the session · anything else = back to the queue
  */
 export class HostController {
   private readonly modes = new Map<string, Mode>()
@@ -61,6 +76,8 @@ export class HostController {
   private readonly now: () => number
   private readonly undoMs: number
   private readonly flashMs: number
+  /** Viewers looking at the "Session ended" screen: their next press shows the lobby, not a new session. */
+  private readonly sawEnd = new Set<Viewer>()
 
   constructor(private readonly o: ControllerOptions) {
     this.now = o.now ?? Date.now
@@ -80,10 +97,16 @@ export class HostController {
     return m?.kind === 'queue' ? m.selected : 0
   }
 
-  /** A gesture from the glasses. Returns false when it is not for a live session (the glasses' default applies). */
-  input(g: Gesture, idx?: number): boolean {
-    const session = this.o.sessions.active()
-    if (!session) return false
+  /** The session ended while these viewers watched. */
+  ended(viewers: Viewer[]): void {
+    for (const v of viewers) this.sawEnd.add(v)
+  }
+
+  /** A gesture from the glasses. Returns false to leave it to the glasses (double = exit). */
+  input(g: Gesture, idx?: number, viewer: Viewer = DEV): boolean {
+    const session = this.o.sessionFor(viewer)
+    if (!session || session.status !== 'live') return this.inLobby(viewer, g)
+    this.sawEnd.delete(viewer)
     const mode = this.mode(session.id)
     switch (mode.kind) {
       case 'queue':
@@ -97,7 +120,43 @@ export class HostController {
         clearTimeout(mode.timer)
         this.set(session.id, mode.next)
         return true
+      case 'confirm_end':
+        if (g === 'double') this.o.endSession(session)
+        else this.toQueue(session.id)
+        return true
     }
+  }
+
+  /** What the glasses should show for this session right now (reconnects). */
+  screen(sessionId: string): Screen | undefined {
+    const mode = this.mode(sessionId)
+    switch (mode.kind) {
+      case 'taking': {
+        const c = this.o.store.get(mode.clusterId)
+        return c ? { view: 'taking', id: c.id, n: c.askers, title: c.title } : undefined
+      }
+      case 'sending':
+        return this.sendingScreen(mode)
+      case 'confirm_end':
+        return { view: 'confirm_end', open: this.o.store.ranked(sessionId).length }
+      default:
+        return this.o.publisher.screen(sessionId)
+    }
+  }
+
+  private inLobby(viewer: Viewer, g: Gesture): boolean {
+    const lobby = this.o.lobby
+    if (!lobby || viewer === DEV) return false
+    if (g === 'double') return false // exit
+    if (g === 'long') {
+      lobby.unpair(viewer)
+      return true
+    }
+    if (g === 'press') {
+      if (this.sawEnd.delete(viewer)) lobby.showLobby(viewer)
+      else lobby.goLive(viewer)
+    }
+    return true
   }
 
   private mode(sessionId: string): Mode {
@@ -124,8 +183,19 @@ export class HostController {
       this.set(session.id, { kind: 'taking', clusterId: cluster.id, takenS: this.o.speech.offset(session, this.now()) })
       return true
     }
-    // double: exit (the glasses' default); long: spam flag arrives in phase 5.
-    return false
+    if (g === 'long') {
+      const cluster = ranked[idx ?? mode.selected] ?? ranked[0]
+      if (cluster) this.o.flagSpam(session, cluster.id)
+      this.o.publisher.publishNow(session.id)
+      return true
+    }
+    if (g === 'double') {
+      this.modes.set(session.id, { kind: 'confirm_end' })
+      this.o.publisher.hold(session.id, true)
+      this.o.show(session.id, { view: 'confirm_end', open: ranked.length })
+      return true
+    }
+    return true
   }
 
   // ------------------------------------------------------------ taking
@@ -229,7 +299,7 @@ export class HostController {
       const m = this.modes.get(session.id)
       if (m?.kind !== 'sending' || m.timer !== timer) return clearInterval(timer)
       if (this.now() >= m.deadline) void this.send(session, m)
-      else this.o.show(this.sendingScreen(m))
+      else this.o.show(session.id, this.sendingScreen(m))
     }, Math.min(1000, this.undoMs))
     const mode: Mode = { kind: 'sending', clusterId: from.clusterId, takenS: from.takenS, batch, deadline, timer }
     this.set(session.id, mode)
@@ -294,7 +364,7 @@ export class HostController {
     }, this.flashMs)
     this.modes.set(sessionId, { kind: 'flash', next, timer })
     this.o.publisher.hold(sessionId, true)
-    this.o.show(screen)
+    this.o.show(sessionId, screen)
   }
 
   private toQueue(sessionId: string): void {
@@ -312,14 +382,15 @@ export class HostController {
       case 'taking': {
         this.o.publisher.hold(sessionId, true)
         const c = this.o.store.get(mode.clusterId)
-        if (c) this.o.show({ view: 'taking', id: c.id, n: c.askers, title: c.title })
+        if (c) this.o.show(sessionId, { view: 'taking', id: c.id, n: c.askers, title: c.title })
         return
       }
       case 'sending':
         this.o.publisher.hold(sessionId, true)
-        this.o.show(this.sendingScreen(mode))
+        this.o.show(sessionId, this.sendingScreen(mode))
         return
       case 'flash':
+      case 'confirm_end':
         return
     }
   }

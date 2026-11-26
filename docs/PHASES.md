@@ -175,15 +175,26 @@ host did not take. `pnpm --filter @answered/server eval:answers` re-runs it.
 - Gestures (phase 5 polishes the screens): queue press = take, swipe = select; taking press = answered,
   swipe = skip, double = put back; sending press = now, swipe/double = cancel.
 
-## Phase 5 — Glasses experience and pairing
+## Phase 5 — Glasses experience and pairing ✔ (server live; release .ehpk built)
 
-- Six screens (Pair, Lobby, Queue, Taking, Answered, Still open) plus Sending/undo; list
-  rebuild at most every 5 s and only when the top 5 change; text updates debounced ~120 ms.
-- Input map from the spec. Double-tap is the platform's usual "exit app" gesture, so keep
-  an exit path on the Pair and Lobby screens.
-- Pairing: glasses show a 4-digit code; recommended flow is `/pair 4821` sent in the group by an
-  admin (no web page, no `/setdomain`). The spec's Telegram Login page is the alternative.
-- Lifecycle: on `FOREGROUND_ENTER_EVENT` reconnect, re-enable audio, re-render.
+- Pairing: glasses without a token connect and get a 4-digit code (10-minute, single use). A group admin
+  sends `/pair <code>`; the server issues a host token (rotating any older one), remembers the group, and
+  sends it to the glasses, which store it with `setLocalStorage` and reconnect. A revoked token (4401)
+  sends the glasses back to pairing. No token is baked into the release build.
+- Routing: each host's glasses follow their paired group's session (screens, audio, gestures). The dev
+  token still follows the newest live session, for the test scripts. `/live` in the group and "press to go
+  live" on the glasses both post the opening message (now driven by session events, as is the end message).
+- Screens (screenshots in `docs/img/glasses-screens.png`, taken in the headless simulator): pair, lobby,
+  queue as a native list with a header line, taking, sending, answered, still open, confirm end, ended.
+  The list scrolls on the glasses without a server round trip; a press sends the selected row's index.
+  List items change only by page rebuild (server throttles to 5 s); the header and text screens update in place.
+- Input map as in the README table. Platform conflict resolved: double = exit on the pair and lobby
+  screens; in the queue double asks to end the session (a second double ends it, anything else cancels).
+  After "Session ended", the first press shows the lobby, so a stray press never starts a new session.
+- Spam: long press in the queue deletes the selected question's messages and drops it from the queue.
+- Release build: `pnpm --filter @answered/glasses ehpk` (`.env.production`: Railway URL, empty dev token).
+  Checked: the bundle contains the Railway URL and not the dev token.
+- Not done: the phone-side pairing page (the bot command replaced it), and per-message speaker filtering.
 
 ## Phase 6 — Recap, seed audience, eval and tuning
 

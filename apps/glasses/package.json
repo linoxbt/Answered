@@ -8,8 +8,8 @@
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
     "preview": "vite preview",
-    "pack": "pnpm build && evenhub pack app.json dist -o answered.ehpk",
-    "simulate": "evenhub-simulator http://localhost:5173"
+    "simulate": "evenhub-simulator http://localhost:5173",
+    "ehpk": "pnpm build && evenhub pack app.json dist -o answered.ehpk"
   },
   "dependencies": {
     "@answered/protocol": "workspace:*",

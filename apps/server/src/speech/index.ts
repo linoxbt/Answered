@@ -67,12 +67,12 @@ export class SpeechService {
   }
 
   /**
-   * Audio from the glasses. Until pairing (phase 5) ties glasses to a host, it belongs to the
-   * most recently started live session; with no live session it is dropped.
+   * Audio from a host's glasses for their live session (default: the newest live session,
+   * as for the dev token). With no live session it is dropped.
    */
-  audio(pcm: Buffer): void {
-    const session = this.activeSession()
-    if (!session) return
+  audio(pcm: Buffer, forSession?: Session): void {
+    const session = forSession ?? this.activeSession()
+    if (!session || session.status !== 'live') return
     if (!this.o.factory) {
       if (!this.warnedDisabled) this.o.log.warn('DEEPGRAM_API_KEY not set: glasses audio is not transcribed')
       this.warnedDisabled = true

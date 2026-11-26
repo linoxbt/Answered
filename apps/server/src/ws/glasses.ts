@@ -10,9 +10,20 @@ import {
   type Screen,
   type ServerMessage,
 } from '@answered/protocol'
+import { PairingCodes } from '../hosts.js'
+
+/**
+ * Who a pair of glasses belongs to: a paired host's id, or DEV for the setup token that the
+ * test scripts (and phase 0-4 glasses) use, which follows whichever session is live.
+ */
+export type Viewer = string
+export const DEV: Viewer = 'dev'
 
 export interface GlassesConnectionStats {
   id: string
+  viewer: Viewer | 'pairing'
+  /** While pairing: the code on screen (dev stats only). */
+  pairCode?: string
   connectedAt: string
   app?: string
   version?: string
@@ -27,26 +38,35 @@ export interface GlassesConnectionStats {
 
 interface Connection {
   socket: WebSocket
+  /** Undefined while the glasses wait for `/pair <code>`. */
+  viewer?: Viewer
+  pairCode?: string
   stats: GlassesConnectionStats
   lastStatusText?: string
   statusTimer?: NodeJS.Timeout
 }
 
-/** How often the phase-0 status screen may be redrawn. The BLE link to the glasses is slow. */
+export interface HubHooks {
+  /** Every audio frame (PCM s16le 16 kHz mono) from a viewer's glasses. */
+  audio?: (pcm: Buffer, viewer: Viewer) => void
+  /** A gesture; return false to fall back to the default (double = exit). */
+  input?: (g: Gesture, idx: number | undefined, viewer: Viewer) => boolean
+  /** What a viewer should see right now (on connect and resume); undefined = diagnostic screen. */
+  screenFor?: (viewer: Viewer) => Screen | undefined
+}
+
+/** How often the diagnostic screen may be redrawn. The BLE link to the glasses is slow. */
 const STATUS_REFRESH_MS = 1000
 
 export class GlassesHub {
   private readonly connections = new Map<string, Connection>()
+  private readonly screens = new Map<Viewer, Screen>()
+  private readonly pairing = new PairingCodes<string>()
   private totalAudioBytes = 0
-  /** What every pair of glasses should show. Undefined = the phase-0 diagnostic screen. */
-  private screen?: Screen
 
   constructor(
     private readonly log: FastifyBaseLogger,
-    /** Receives every audio frame (PCM s16le 16 kHz mono) for speech-to-text. */
-    private readonly audioSink: (pcm: Buffer) => void = () => {},
-    /** Gestures for the live session; returns false to fall back to the default (double = exit). */
-    private readonly inputSink: (g: Gesture, idx?: number) => boolean = () => false,
+    private readonly hooks: HubHooks = {},
   ) {}
 
   get size(): number {
@@ -57,34 +77,74 @@ export class GlassesHub {
     return {
       connections: [...this.connections.values()].map((c) => c.stats),
       totalAudioBytes: this.totalAudioBytes,
-      screen: this.screen?.view ?? 'status',
+      screen: this.screens.get(DEV)?.view ?? 'status',
     }
   }
 
+  /** Shows a screen to these viewers' glasses (and remembers it for glasses that connect later). */
+  show(screen: Screen, viewers: Viewer[]): void {
+    for (const v of new Set(viewers)) {
+      this.screens.set(v, screen)
+      for (const conn of this.connections.values()) if (conn.viewer === v) this.render(conn)
+    }
+  }
+
+  /** Sends a control message to a viewer's glasses. */
+  sendTo(viewer: Viewer, msg: ServerMessage): void {
+    for (const conn of this.connections.values()) if (conn.viewer === viewer) this.send(conn, msg)
+  }
+
+  /** True if glasses are on screen with this pairing code. */
+  pairingWaiting(code: string): boolean {
+    return this.pairing.has(code)
+  }
+
   /**
-   * Shows a screen on every connected pair of glasses and on any that connect later.
-   * Until pairing (phase 5) ties glasses to a host, all glasses belong to the one dev host.
-   * Pass undefined to go back to the diagnostic screen.
+   * Completes pairing for the glasses showing `code`. They receive their token and reconnect with it.
+   * Returns false if no glasses are waiting with that code.
    */
-  show(screen: Screen | undefined): void {
-    this.screen = screen
-    for (const conn of this.connections.values()) this.render(conn)
+  completePairing(code: string, token: string, group: string): boolean {
+    const connId = this.pairing.claim(code)
+    const conn = connId ? this.connections.get(connId) : undefined
+    if (!conn) return false
+    this.send(conn, { t: 'paired', token, group })
+    conn.socket.close(1000, 'paired')
+    return true
+  }
+
+  /** The viewer's glasses forget their token and go back to the pairing screen. */
+  unpair(viewer: Viewer): void {
+    this.screens.delete(viewer)
+    for (const conn of this.connections.values()) {
+      if (conn.viewer !== viewer) continue
+      this.send(conn, { t: 'unpaired' })
+      conn.socket.close(1000, 'unpaired')
+    }
   }
 
   private render(conn: Connection): void {
-    if (this.screen) {
+    if (!conn.viewer) {
+      if (conn.pairCode) this.send(conn, { t: 'screen', view: 'pair', code: conn.pairCode })
+      return
+    }
+    const screen = this.screens.get(conn.viewer) ?? this.hooks.screenFor?.(conn.viewer)
+    if (screen) {
+      this.screens.set(conn.viewer, screen)
       conn.lastStatusText = undefined
-      this.send(conn, { t: 'screen', ...this.screen })
+      this.send(conn, { t: 'screen', ...screen })
     } else {
       this.pushStatus(conn)
     }
   }
 
-  attach(socket: WebSocket): void {
+  /** `viewer` undefined: the glasses are not paired yet and get a pairing code. */
+  attach(socket: WebSocket, viewer: Viewer | undefined): void {
     const conn: Connection = {
       socket,
+      viewer,
       stats: {
         id: randomUUID(),
+        viewer: viewer ?? 'pairing',
         connectedAt: new Date().toISOString(),
         audioFrames: 0,
         audioBytes: 0,
@@ -93,7 +153,7 @@ export class GlassesHub {
       },
     }
     this.connections.set(conn.stats.id, conn)
-    const log = this.log.child({ glasses: conn.stats.id })
+    const log = this.log.child({ glasses: conn.stats.id, viewer: conn.stats.viewer })
     log.info('glasses connected')
 
     socket.on('message', (data: RawData, isBinary: boolean) => {
@@ -102,12 +162,18 @@ export class GlassesHub {
     })
     socket.on('close', (code) => {
       clearTimeout(conn.statusTimer)
+      if (conn.pairCode) this.pairing.release(conn.pairCode)
       this.connections.delete(conn.stats.id)
       log.info({ code, audioBytes: conn.stats.audioBytes, inputs: conn.stats.inputs }, 'glasses disconnected')
     })
     socket.on('error', (err) => log.warn({ err }, 'glasses socket error'))
 
-    this.send(conn, { t: 'screen', view: 'status', title: 'ANSWERED', lines: ['Connected to server', 'Waiting for hello...'] })
+    if (!viewer) {
+      conn.pairCode = this.pairing.create(conn.stats.id)
+      conn.stats.pairCode = conn.pairCode
+      log.info('glasses waiting to pair')
+    }
+    this.render(conn)
   }
 
   private onAudio(conn: Connection, data: RawData): void {
@@ -116,7 +182,8 @@ export class GlassesHub {
     conn.stats.audioBytes += buf.length
     conn.stats.audioLevel = peakLevel(buf)
     this.totalAudioBytes += buf.length
-    this.audioSink(buf)
+    if (!conn.viewer) return // unpaired glasses have no session to hear
+    this.hooks.audio?.(buf, conn.viewer)
     this.scheduleStatus(conn)
   }
 
@@ -134,22 +201,22 @@ export class GlassesHub {
       case 'hello':
         Object.assign(conn.stats, { app: msg.app, version: msg.version, mic: msg.mic })
         log.info({ app: msg.app, version: msg.version, mic: msg.mic }, 'glasses hello')
-        // Phase 0: turn the mic on straight away to prove audio reaches the server.
-        this.send(conn, { t: 'audio', on: true, source: msg.mic })
+        // The mic stays on while connected: hosts often start answering before they press.
+        if (conn.viewer) this.send(conn, { t: 'audio', on: true, source: msg.mic })
         this.render(conn)
         return
       case 'input':
         conn.stats.inputs += 1
         conn.stats.lastInput = { g: msg.g, src: msg.src, idx: msg.idx, at: new Date().toISOString() }
         log.info({ g: msg.g, src: msg.src, idx: msg.idx }, 'glasses input')
-        if (this.inputSink(msg.g, msg.idx)) return
+        if (conn.viewer && this.hooks.input?.(msg.g, msg.idx, conn.viewer)) return
         // Double-tap is the platform's "exit app" gesture.
         if (msg.g === 'double') this.send(conn, { t: 'exit' })
-        else if (!this.screen) this.pushStatus(conn)
+        else if (conn.viewer && !this.screens.has(conn.viewer)) this.pushStatus(conn)
         return
       case 'resume':
         log.info('glasses resumed')
-        this.send(conn, { t: 'audio', on: true, source: conn.stats.mic ?? 'glasses' })
+        if (conn.viewer) this.send(conn, { t: 'audio', on: true, source: conn.stats.mic ?? 'glasses' })
         conn.lastStatusText = undefined
         this.render(conn)
         return
@@ -160,23 +227,23 @@ export class GlassesHub {
     if (conn.statusTimer) return
     conn.statusTimer = setTimeout(() => {
       conn.statusTimer = undefined
-      if (!this.screen) this.pushStatus(conn)
+      if (conn.viewer && !this.screens.has(conn.viewer)) this.pushStatus(conn)
     }, STATUS_REFRESH_MS)
   }
 
-  /** Phase-0 diagnostic screen: proves audio and input both reach the server. */
+  /** Diagnostic screen for the dev token: proves audio and input both reach the server. */
   private pushStatus(conn: Connection): void {
     const s = conn.stats
     const last = s.lastInput ? `${s.lastInput.g}${s.lastInput.src ? ` (${s.lastInput.src})` : ''}` : '-'
     const lines = [
       `Mic: ${s.mic ?? '?'} | ${(s.audioBytes / 1024).toFixed(0)} KB | level ${s.audioLevel}%`,
       `Last input: ${last} | total ${s.inputs}`,
-      'Double-tap to exit',
+      'No live session. Double-tap to exit',
     ]
     const text = lines.join('\n')
     if (text === conn.lastStatusText) return
     conn.lastStatusText = text
-    this.send(conn, { t: 'screen', view: 'status', title: 'ANSWERED  phase 0', lines })
+    this.send(conn, { t: 'screen', view: 'status', title: 'ANSWERED', lines })
   }
 
   private send(conn: Connection, msg: ServerMessage): void {
@@ -198,8 +265,8 @@ export function peakLevel(pcm: Buffer): number {
   return Math.round((peak / 32768) * 100)
 }
 
-function tokenMatches(expected: string, received: unknown): boolean {
-  if (typeof received !== 'string') return false
+export function tokenMatches(expected: string | undefined, received: unknown): boolean {
+  if (!expected || typeof received !== 'string') return false
   const a = Buffer.from(expected)
   const b = Buffer.from(received)
   return a.length === b.length && timingSafeEqual(a, b)
@@ -208,22 +275,25 @@ function tokenMatches(expected: string, received: unknown): boolean {
 export interface GlassesRouteOptions {
   hub: GlassesHub
   devToken: string | undefined
+  /** Looks up a paired host's id by token. */
+  hostByToken: (token: string) => string | undefined
 }
 
 export async function glassesRoutes(app: FastifyInstance, opts: GlassesRouteOptions): Promise<void> {
+  // No token: pairing. Dev token: the scripts. Host token: that host's glasses. Anything else: 4401.
   app.get('/ws/glasses', { websocket: true }, (socket, req) => {
     const token = (req.query as Record<string, unknown>).token
-    if (!opts.devToken || !tokenMatches(opts.devToken, token)) {
-      socket.close(4401, 'unauthorized')
-      return
-    }
-    opts.hub.attach(socket)
+    if (typeof token !== 'string' || token === '') return opts.hub.attach(socket, undefined)
+    if (tokenMatches(opts.devToken, token)) return opts.hub.attach(socket, DEV)
+    const host = opts.hostByToken(token)
+    if (host) return opts.hub.attach(socket, host)
+    socket.close(4401, 'unauthorized')
   })
 
-  // Diagnostic counters for the day-1 risk checks; needs the same token as the socket.
+  // Diagnostic counters; needs the dev token.
   app.get('/debug/stats', async (req, reply) => {
     const token = req.headers.authorization?.replace(/^Bearer\s+/i, '')
-    if (!opts.devToken || !tokenMatches(opts.devToken, token)) return reply.code(401).send({ error: 'unauthorized' })
+    if (!tokenMatches(opts.devToken, token)) return reply.code(401).send({ error: 'unauthorized' })
     return opts.hub.stats()
   })
 }
