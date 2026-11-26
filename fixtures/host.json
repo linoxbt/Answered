@@ -1,0 +1,8 @@
+{
+  "description": "Spoken parts of fixtures/host.wav (16 kHz mono, generated with espeak-ng). `answers` is the questions.json label the part answers, or null when it only talks around one. Phase 4's matcher must mark mainnet and bridge answered and leave unlock open.",
+  "parts": [
+    { "startS": 2.5, "endS": 8.53, "text": "Great question. Mainnet ships in Q1, and the public testnet opens in December.", "answers": "mainnet" },
+    { "startS": 11.03, "endS": 18.32, "text": "On token unlocks, we care a lot about fairness for the community, and we are working through the details with our partners.", "answers": null, "talksAround": "unlock" },
+    { "startS": 20.82, "endS": 25.1, "text": "And yes, there will be a bridge from testnet to mainnet on launch day.", "answers": "bridge" }
+  ]
+}

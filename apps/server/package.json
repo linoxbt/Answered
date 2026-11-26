@@ -10,7 +10,8 @@
     "test": "NODE_OPTIONS=--disable-warning=ExperimentalWarning vitest run",
     "set-webhook": "tsx --env-file-if-exists=.env scripts/set-webhook.ts",
     "ws-smoke": "tsx --env-file-if-exists=.env scripts/ws-smoke.ts",
-    "eval:clusters": "NODE_OPTIONS=--disable-warning=ExperimentalWarning tsx --env-file-if-exists=.env scripts/eval-clusters.ts"
+    "eval:clusters": "NODE_OPTIONS=--disable-warning=ExperimentalWarning tsx --env-file-if-exists=.env scripts/eval-clusters.ts",
+    "replay-audio": "NODE_OPTIONS=--disable-warning=ExperimentalWarning tsx --env-file-if-exists=.env scripts/replay-audio.ts"
   },
   "dependencies": {
     "@answered/protocol": "workspace:*",

@@ -126,14 +126,28 @@ and it removes a vendor, a key and the 0.74/0.82 threshold tuning.
 - Spec gap: the seeding plan uses 3–6 Telegram accounts, but askers are unique people, so the demo
   can show at most 6 askers on one question, not "14 asked". Either recruit more accounts or show asks.
 
-## Phase 3 — Speech
+## Phase 3 — Speech ✔ (code complete; live transcription needs DEEPGRAM_API_KEY)
 
-- Deepgram live bridge per session (Nova-3, linear16, 16 kHz). Note: `@deepgram/sdk` is now v5,
-  so check the spec's v3-style snippet against the current API.
-- Store final segments with session-relative timestamps; delete them at `/end`.
-- Consider forwarding only frames whose `speakerRole` is `Self` (the host).
-- `scripts/replay-audio.ts` streams a WAV into `/ws/glasses` as if it came from G2.
-- Fallbacks: phone mic; prerecorded endpoint in 10 s chunks.
+- Deepgram live over a raw WebSocket, checked against the v1/listen reference on 26 Nov:
+  `Authorization: Token <key>`; nova-3, linear16, 16 kHz, mono, smart_format, interim_results,
+  endpointing 300 ms, utterance_end_ms 1500, vad_events; one `keyterm` parameter per term (Nova-3 only).
+  Two spec corrections: KeepAlive every 3–5 s (spec said 8; 10 s idle closes the stream with NET-0001),
+  and keyterms are repeated parameters, not a list. Using `ws` directly avoids the SDK's v3→v5 API churn.
+- Audio path: glasses binary frame → hub → SpeechService → the most recently started live session's
+  stream (until pairing ties glasses to a host). No live session or no key: audio is dropped.
+- Timestamps: Deepgram's word times are audio time, which stops while the glasses are away. An
+  `AudioClock` records when each chunk was handed over and maps audio time back to wall time, so
+  segment times are true seconds since `/live` even across gaps and reconnects.
+- Resilience: reconnect with backoff (0.5→8 s) keeping the last 5 s of audio so the start of an answer
+  is not lost; a refused key (401/402/403) stops retrying; idle streams close after 60 s; `/end` sends
+  CloseStream and the transcript is deleted with the session.
+- Events for phase 4: `segment` (final text, with `speechFinal`), `utterance_end`, `interim`.
+- `fixtures/host.wav` (27.6 s, TTS) + `fixtures/host.json`: a real mainnet answer, a talk-around on
+  unlocks with no dates (must stay open), and a bridge answer. `pnpm --filter @answered/server
+  replay-audio [file] [--speed N]` streams any 16 kHz mono WAV into `/ws/glasses` like G2 and prints the
+  stored transcript; `GET /debug/transcript` (Bearer glasses token) shows it on Railway.
+- Not done: the prerecorded-endpoint fallback (live stream reconnects instead), and filtering frames by
+  the SDK's `speakerRole` (the binary frames carry no metadata yet; revisit if room audio leaks in).
 
 ## Phase 4 — Answer matcher and write-back
 

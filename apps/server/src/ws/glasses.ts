@@ -41,7 +41,11 @@ export class GlassesHub {
   /** What every pair of glasses should show. Undefined = the phase-0 diagnostic screen. */
   private screen?: Screen
 
-  constructor(private readonly log: FastifyBaseLogger) {}
+  constructor(
+    private readonly log: FastifyBaseLogger,
+    /** Receives every audio frame (PCM s16le 16 kHz mono) for speech-to-text. */
+    private readonly audioSink: (pcm: Buffer) => void = () => {},
+  ) {}
 
   get size(): number {
     return this.connections.size
@@ -110,7 +114,7 @@ export class GlassesHub {
     conn.stats.audioBytes += buf.length
     conn.stats.audioLevel = peakLevel(buf)
     this.totalAudioBytes += buf.length
-    // Phase 3 forwards these bytes to Deepgram unchanged.
+    this.audioSink(buf)
     this.scheduleStatus(conn)
   }
 

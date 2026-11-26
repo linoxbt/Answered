@@ -9,6 +9,10 @@ import { ClaudeClassifier, FallbackClassifier, HeuristicClassifier, type Classif
 import { ClusterStore } from './pipeline/clusters.js'
 import { Pipeline, QueuePublisher } from './pipeline/index.js'
 import { evalRoutes } from './routes/eval.js'
+import { debugRoutes } from './routes/debug.js'
+import { deepgramFactory } from './speech/deepgram.js'
+import { SpeechService } from './speech/index.js'
+import type { TranscriberFactory } from './speech/types.js'
 import { telegramRoutes } from './routes/telegram.js'
 import { SessionService } from './sessions.js'
 import { registerHandlers } from './telegram/handlers.js'
@@ -23,6 +27,7 @@ export interface AppDeps {
   outbox?: Outbox
   now?: () => number
   classifier?: Classifier
+  transcriber?: TranscriberFactory
 }
 
 /** Pino logger whose request serializer hides the glasses token in query strings. */
@@ -47,6 +52,7 @@ export interface App {
   store: ClusterStore
   pipeline: Pipeline
   publisher: QueuePublisher
+  speech: SpeechService
 }
 
 export async function buildApp(config: Config, deps: AppDeps = {}): Promise<App> {
@@ -55,7 +61,8 @@ export async function buildApp(config: Config, deps: AppDeps = {}): Promise<App>
   await app.register(cors, { origin: config.CORS_ORIGIN === '*' ? true : config.CORS_ORIGIN.split(',') })
   await app.register(websocket, { options: { maxPayload: 1 << 20 } })
 
-  const hub = new GlassesHub(app.log)
+  // `speech` is created below; audio only arrives once the server is listening.
+  const hub = new GlassesHub(app.log, (pcm) => speech.audio(pcm))
   const db = openDb(config.DATABASE_URL)
   const sessions = new SessionService(db, deps.now)
   const outbox =
@@ -90,6 +97,14 @@ export async function buildApp(config: Config, deps: AppDeps = {}): Promise<App>
     }
   })
 
+  const transcriber =
+    deps.transcriber ??
+    (config.DEEPGRAM_API_KEY
+      ? deepgramFactory({ apiKey: config.DEEPGRAM_API_KEY, url: config.DEEPGRAM_URL, keyterms: config.STT_KEYTERMS, log: app.log })
+      : undefined)
+  const speech = new SpeechService({ db, sessions, log: app.log, factory: transcriber, now: deps.now })
+  app.log.info({ speech: transcriber ? 'deepgram' : 'off' }, 'speech to text')
+
   // After a restart or redeploy mid-session: classify what arrived meanwhile and restore the queue screen.
   for (const session of sessions.live()) {
     pipeline.captured(session.id)
@@ -108,13 +123,15 @@ export async function buildApp(config: Config, deps: AppDeps = {}): Promise<App>
 
   await app.register(telegramRoutes, { secret: config.TG_WEBHOOK_SECRET, bot: deps.bot })
   await app.register(glassesRoutes, { hub, devToken: config.GLASSES_DEV_TOKEN })
+  await app.register(debugRoutes, { devToken: config.GLASSES_DEV_TOKEN, sessions, speech })
   await app.register(evalRoutes, { classifier, devToken: config.GLASSES_DEV_TOKEN, fixturesPath: config.FIXTURES_PATH })
 
   app.addHook('onClose', async () => {
     pipeline.stop()
+    await speech.close()
     hub.closeAll()
     db.close()
   })
 
-  return { app, hub, db, sessions, outbox, store, pipeline, publisher }
+  return { app, hub, db, sessions, outbox, store, pipeline, publisher, speech }
 }

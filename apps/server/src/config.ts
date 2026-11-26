@@ -26,6 +26,15 @@ const ConfigSchema = z
     /** Labelled demo messages for GET /debug/eval. */
     FIXTURES_PATH: z.string().default(new URL('../../../fixtures/questions.json', import.meta.url).pathname),
 
+    /** Speech-to-text (phase 3). Without a key, glasses audio is counted but not transcribed. */
+    DEEPGRAM_API_KEY: optional,
+    DEEPGRAM_URL: z.string().default('wss://api.deepgram.com/v1/listen'),
+    /** Comma-separated words Deepgram should expect: project name, ticker, product names. */
+    STT_KEYTERMS: z
+      .string()
+      .default('mainnet,testnet,tokenomics,airdrop')
+      .transform((v) => v.split(',').map((t) => t.trim()).filter(Boolean)),
+
     TG_BOT_TOKEN: optional,
     /** Sent back by Telegram in X-Telegram-Bot-Api-Secret-Token on every webhook call. */
     TG_WEBHOOK_SECRET: optional.pipe(
