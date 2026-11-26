@@ -50,6 +50,15 @@ Anthropic key, OpenAI key (or skip, see phase 2), Railway project.
 | Input from the simulator | Verified: press (with `eventSource` = right temple), swipe up/down, long press, double-tap all reach the server. |
 | `.ehpk` packs | Verified with `evenhub pack` (CLI 0.2.0 stamps `min_app_version` 2.2.10). |
 
+**Deployment (26 Nov)**
+
+- Railway project `answered`, service `server`, volume `answered-data` at `/data`.
+- Public URL: `https://server-production-f558e8c1.up.railway.app` (health: `/health`).
+- Telegram webhook set for **@answereddbot** with the spec's `allowed_updates`; secret header checked.
+- Verified from the simulator against the deployed server: `wss://` connects, input and audio arrive.
+- Remaining owner step: add @answereddbot to a test supergroup **as an admin** (privacy mode is
+  still on, and admin is also what enables reaction updates and pinning), then send `/live`.
+
 ## Phase 1 — Data model, sessions, Telegram core ✔ (code complete, awaiting a real bot)
 
 - SQLite through Node's built-in `node:sqlite` (no native module to build on Railway), versioned
