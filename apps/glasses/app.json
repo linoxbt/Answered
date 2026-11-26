@@ -1,0 +1,25 @@
+{
+  "package_id": "com.linoxbt.answered",
+  "edition": "202601",
+  "name": "Answered",
+  "version": "0.1.0",
+  "min_app_version": "2.2.10",
+  "min_sdk_version": "0.0.16",
+  "entrypoint": "index.html",
+  "permissions": [
+    {
+      "name": "network",
+      "desc": "Connects to the Answered server to receive audience questions and send live audio for answer detection.",
+      "whitelist": ["https://api.answered.app", "wss://api.answered.app"]
+    },
+    {
+      "name": "g2-microphone",
+      "desc": "Hears the host's spoken answers so the people who asked can be replied to automatically."
+    },
+    {
+      "name": "phone-microphone",
+      "desc": "Fallback microphone when the glasses mic is unavailable."
+    }
+  ],
+  "supported_languages": ["en"]
+}

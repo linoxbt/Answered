@@ -1,0 +1,18 @@
+{
+  "name": "answered",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Answer a Telegram audience out loud, once, from Even Realities G2 glasses.",
+  "type": "module",
+  "packageManager": "pnpm@10.28.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev:server": "pnpm --filter @answered/server dev",
+    "dev:glasses": "pnpm --filter @answered/glasses dev",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test"
+  }
+}
