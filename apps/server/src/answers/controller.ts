@@ -22,7 +22,16 @@ interface Pending {
 type Mode =
   | { kind: 'queue'; selected: number }
   | { kind: 'taking'; clusterId: string; takenS: number }
-  | { kind: 'sending'; clusterId: string; takenS: number; batch: Pending[]; deadline: number; timer: ReturnType<typeof setInterval> }
+  | {
+      kind: 'sending'
+      clusterId: string
+      takenS: number
+      batch: Pending[]
+      deadline: number
+      timer: ReturnType<typeof setInterval>
+      /** Wall-clock end of the speech that was judged (for the latency metric); undefined for manual. */
+      speechEndAt?: number
+    }
   | { kind: 'flash'; next: Mode; timer: ReturnType<typeof setTimeout> }
   | { kind: 'confirm_end' }
 
@@ -73,6 +82,8 @@ export interface ControllerOptions {
 export class HostController {
   private readonly modes = new Map<string, Mode>()
   private readonly judging = new Map<string, { rerun: boolean }>()
+  /** Session offset (s) of the host's last word, from Deepgram's UtteranceEnd. */
+  private readonly lastSpeechEnd = new Map<string, number>()
   private readonly now: () => number
   private readonly undoMs: number
   private readonly flashMs: number
@@ -84,7 +95,10 @@ export class HostController {
     this.undoMs = o.undoMs ?? 3000
     this.flashMs = o.flashMs ?? 2500
     o.speech.onEvent((e) => {
-      if (e.type === 'utterance_end') void this.utteranceEnded(e.sessionId)
+      if (e.type === 'utterance_end') {
+        this.lastSpeechEnd.set(e.sessionId, e.atS)
+        void this.utteranceEnded(e.sessionId)
+      }
     })
     o.sessions.onEvent((e) => {
       if (e.type === 'ended') this.clear(e.session.id)
@@ -286,14 +300,16 @@ export class HostController {
     // The taken question first: it is what the HUD shows.
     accepted.sort((a, b) => Number(b.clusterId === taken.id) - Number(a.clusterId === taken.id))
 
-    if (accepted.length) return this.startSending(session, mode, accepted)
+    const speechEndS = this.lastSpeechEnd.get(sessionId)
+    const speechEndAt = speechEndS !== undefined && session.startedAt !== null ? session.startedAt + speechEndS * 1000 : undefined
+    if (accepted.length) return this.startSending(session, mode, accepted, speechEndAt)
     // Spec: the matcher fails toward "still open". The host can keep talking, skip, or press.
     this.flash(sessionId, { view: 'still_open' }, mode)
   }
 
   // ------------------------------------------------------------ sending (undo window)
 
-  private startSending(session: Session, from: Extract<Mode, { kind: 'taking' }>, batch: Pending[]): void {
+  private startSending(session: Session, from: Extract<Mode, { kind: 'taking' }>, batch: Pending[], speechEndAt?: number): void {
     const deadline = this.now() + this.undoMs
     const timer = setInterval(() => {
       const m = this.modes.get(session.id)
@@ -301,7 +317,7 @@ export class HostController {
       if (this.now() >= m.deadline) void this.send(session, m)
       else this.o.show(session.id, this.sendingScreen(m))
     }, Math.min(1000, this.undoMs))
-    const mode: Mode = { kind: 'sending', clusterId: from.clusterId, takenS: from.takenS, batch, deadline, timer }
+    const mode: Mode = { kind: 'sending', clusterId: from.clusterId, takenS: from.takenS, batch, deadline, timer, speechEndAt }
     this.set(session.id, mode)
   }
 
@@ -328,7 +344,13 @@ export class HostController {
     }
     // If the host took one question but only others were answered, the taken one goes back to the queue.
     if (!mode.batch.some((p) => p.clusterId === mode.clusterId)) this.o.store.release(mode.clusterId)
-    for (const p of mode.batch) await this.o.writer.answered(session, p.clusterId, p.summary, p.offsetS)
+    for (const p of mode.batch) {
+      await this.o.writer.answered(session, p.clusterId, p.summary, p.offsetS)
+      // The spec's latency target: host stops talking -> reply in the group (includes the undo window).
+      if (mode.speechEndAt !== undefined) {
+        this.o.log.info({ session: session.id, cluster: p.clusterId, latencyMs: this.now() - mode.speechEndAt, undoMs: this.undoMs }, 'answer posted')
+      }
+    }
   }
 
   private sendingScreen(m: Extract<Mode, { kind: 'sending' }>): Screen {
@@ -396,6 +418,7 @@ export class HostController {
   }
 
   private clear(sessionId: string): void {
+    this.lastSpeechEnd.delete(sessionId)
     const m = this.modes.get(sessionId)
     if (m?.kind === 'sending') clearInterval(m.timer)
     if (m?.kind === 'flash') clearTimeout(m.timer)

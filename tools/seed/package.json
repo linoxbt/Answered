@@ -1,0 +1,22 @@
+{
+  "name": "@answered/seed",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Demo audience: posts the fixture questions from real Telegram user accounts (bots never see other bots).",
+  "scripts": {
+    "login": "tsx --env-file-if-exists=.env src/login.ts",
+    "seed": "tsx --env-file-if-exists=.env src/seed.ts",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "telegram": "2.26.22",
+    "tsx": "^4.23.15"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.11",
+    "typescript": "^7.0.2",
+    "vitest": "^5.1.2"
+  }
+}

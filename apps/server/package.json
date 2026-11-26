@@ -13,7 +13,8 @@
     "eval:clusters": "NODE_OPTIONS=--disable-warning=ExperimentalWarning tsx --env-file-if-exists=.env scripts/eval-clusters.ts",
     "replay-audio": "NODE_OPTIONS=--disable-warning=ExperimentalWarning tsx --env-file-if-exists=.env scripts/replay-audio.ts",
     "eval:answers": "NODE_OPTIONS=--disable-warning=ExperimentalWarning tsx --env-file-if-exists=.env scripts/eval-answers.ts",
-    "host-sim": "NODE_OPTIONS=--disable-warning=ExperimentalWarning tsx --env-file-if-exists=.env scripts/host-sim.ts"
+    "host-sim": "NODE_OPTIONS=--disable-warning=ExperimentalWarning tsx --env-file-if-exists=.env scripts/host-sim.ts",
+    "scorecard": "NODE_OPTIONS=--disable-warning=ExperimentalWarning tsx --env-file-if-exists=.env scripts/scorecard.ts"
   },
   "dependencies": {
     "@answered/protocol": "workspace:*",
