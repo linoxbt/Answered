@@ -90,6 +90,13 @@ export async function buildApp(config: Config, deps: AppDeps = {}): Promise<App>
     }
   })
 
+  // After a restart or redeploy mid-session: classify what arrived meanwhile and restore the queue screen.
+  for (const session of sessions.live()) {
+    pipeline.captured(session.id)
+    publisher.publishNow(session.id)
+    app.log.info({ session: session.id, chat: session.chatId }, 'resumed live session')
+  }
+
   if (deps.bot) registerHandlers(deps.bot, { sessions, outbox, store, pipeline, publisher, log: app.log, now: deps.now })
 
   app.get('/health', async () => ({

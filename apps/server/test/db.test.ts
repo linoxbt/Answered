@@ -55,3 +55,29 @@ describe('database', () => {
     expect(db.prepare('SELECT COUNT(*) AS n FROM messages').get()).toEqual({ n: 0 })
   })
 })
+
+describe('restart', () => {
+  it('resumes live sessions: pending messages get classified and the queue is shown', async () => {
+    const { buildApp } = await import('../src/app.js')
+    const { loadConfig } = await import('../src/config.js')
+    const dir = mkdtempSync(join(tmpdir(), 'answered-'))
+    dirs.push(dir)
+    const config = loadConfig({ LOG_LEVEL: 'silent', DATABASE_URL: `file:${join(dir, 'a.db')}`, GLASSES_DEV_TOKEN: 't', CLASSIFY_BATCH_MS: '5' })
+
+    // Before the deploy: a live session with an unclassified question.
+    const db = openDb(config.DATABASE_URL)
+    const sessions = new SessionService(db)
+    const { session } = start(sessions)
+    sessions.capture(-100, { messageId: 1, userId: 2, userName: 'A', text: 'When is mainnet launching?', at: Date.now() })
+    db.close()
+
+    const app = await buildApp(config)
+    try {
+      expect(app.hub.stats().screen).toBe('queue')
+      for (let i = 0; i < 100 && app.store.ranked(session.id).length === 0; i++) await new Promise((r) => setTimeout(r, 10))
+      expect(app.store.ranked(session.id).map((c) => c.askers)).toEqual([1])
+    } finally {
+      await app.app.close()
+    }
+  })
+})

@@ -23,7 +23,9 @@ export async function evalRoutes(app: FastifyInstance, opts: EvalRouteOptions): 
     running = true
     try {
       const batch = Number((req.query as Record<string, string>).batch ?? 3)
-      return await runFixtures(loadFixtures(opts.fixturesPath), opts.classifier, req.log, Math.min(Math.max(batch, 1), 30))
+      // Per-batch info lines would flood production logs; keep warnings (e.g. classifier fallbacks).
+      const log = req.log.child({ eval: true }, { level: 'warn' })
+      return await runFixtures(loadFixtures(opts.fixturesPath), opts.classifier, log, Math.min(Math.max(batch, 1), 30))
     } finally {
       running = false
     }

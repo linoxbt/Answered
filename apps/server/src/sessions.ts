@@ -111,6 +111,11 @@ export class SessionService {
     return row ? toSession(row) : undefined
   }
 
+  /** Every live session (used after a restart to resume their pipelines and screens). */
+  live(): Session[] {
+    return (this.db.prepare("SELECT * FROM sessions WHERE status = 'live'").all() as unknown as SessionRow[]).map(toSession)
+  }
+
   get(id: string): Session | undefined {
     const row = this.db.prepare('SELECT * FROM sessions WHERE id = ?').get(id) as SessionRow | undefined
     return row ? toSession(row) : undefined
