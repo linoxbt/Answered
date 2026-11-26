@@ -8,6 +8,21 @@ export type ClusterStatus = 'open' | 'taken' | 'answered' | 'skipped'
 export interface Cluster extends RankableCluster {
   sessionId: string
   status: ClusterStatus
+  /** Every ask, including repeats by the same person: what the glasses show ("14 asked"). */
+  asks: number
+}
+
+/** A cluster as the recap needs it. */
+export interface RecapItem {
+  id: string
+  title: string
+  status: ClusterStatus
+  askers: number
+  asks: number
+  summary: string | null
+  offsetS: number | null
+  replyMessageId: number | null
+  manual: boolean
 }
 
 /** A message waiting for the classifier. */
@@ -35,6 +50,7 @@ interface ClusterRow {
   session_id: string
   title: string
   askers: number
+  asks: number
   votes: number
   last_ask_at: number | null
   created_at: number
@@ -46,6 +62,7 @@ const toCluster = (r: ClusterRow): Cluster => ({
   sessionId: r.session_id,
   title: r.title,
   askers: r.askers,
+  asks: r.asks,
   votes: r.votes,
   lastAskAt: r.last_ask_at,
   firstAskAt: r.created_at,
@@ -162,8 +179,8 @@ export class ClusterStore {
     const times = members.map((m) => m.created_at)
     // created_at is the first ask, not when the batch ran: it breaks ranking ties in asking order.
     this.db
-      .prepare('UPDATE clusters SET askers = ?, votes = ?, title = ?, last_ask_at = ?, created_at = ? WHERE id = ?')
-      .run(askers.size, named + anonymous, pickTitle(members.map((m) => m.canonical)), Math.max(...times), Math.min(...times), clusterId)
+      .prepare('UPDATE clusters SET askers = ?, asks = ?, votes = ?, title = ?, last_ask_at = ?, created_at = ? WHERE id = ?')
+      .run(askers.size, members.length, named + anonymous, pickTitle(members.map((m) => m.canonical)), Math.max(...times), Math.min(...times), clusterId)
   }
 
   /** Takes a message out of its cluster (it was edited and will be classified again). */
@@ -225,6 +242,42 @@ export class ClusterStore {
   /** Back to the queue (host put it back, or the take was abandoned). */
   release(clusterId: string): void {
     this.db.prepare("UPDATE clusters SET status = 'open', taken_at = NULL WHERE id = ? AND status = 'taken'").run(clusterId)
+  }
+
+  /** Spam: out of the queue and out of the recap. */
+  flag(clusterId: string): void {
+    this.db.prepare("UPDATE clusters SET status = 'skipped', flagged = 1 WHERE id = ?").run(clusterId)
+  }
+
+  /** Every question of a session for the recap, in asking order; spam left out. */
+  recap(sessionId: string): RecapItem[] {
+    const rows = this.db
+      .prepare(
+        `SELECT id, title, status, askers, asks, summary, answer_offset_s, reply_message_id, manual
+         FROM clusters WHERE session_id = ? AND flagged = 0 AND askers > 0 ORDER BY created_at`,
+      )
+      .all(sessionId) as Array<{
+      id: string
+      title: string
+      status: ClusterStatus
+      askers: number
+      asks: number
+      summary: string | null
+      answer_offset_s: number | null
+      reply_message_id: number | null
+      manual: number
+    }>
+    return rows.map((r) => ({
+      id: r.id,
+      title: r.title,
+      status: r.status,
+      askers: r.askers,
+      asks: r.asks,
+      summary: r.summary,
+      offsetS: r.answer_offset_s,
+      replyMessageId: r.reply_message_id,
+      manual: r.manual === 1,
+    }))
   }
 
   skip(clusterId: string): void {

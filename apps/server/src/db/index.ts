@@ -107,6 +107,10 @@ const MIGRATIONS: string[] = [
   ALTER TABLE hosts ADD COLUMN chat_title TEXT;
   CREATE INDEX hosts_chat ON hosts(chat_id);
   `,
+  /* 4: count every ask as well as every person; spam stays out of the recap */ `
+  ALTER TABLE clusters ADD COLUMN asks INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE clusters ADD COLUMN flagged INTEGER NOT NULL DEFAULT 0;
+  `,
 ]
 
 /** Opens (and migrates) the database. Accepts `file:./answered.db`, a plain path, or `:memory:`. */

@@ -147,6 +147,10 @@ export class SessionService {
     return result
   }
 
+  setRecapMessage(sessionId: string, messageId: number): void {
+    this.db.prepare('UPDATE sessions SET recap_message_id = ? WHERE id = ?').run(messageId, sessionId)
+  }
+
   setOpeningMessage(sessionId: string, messageId: number): void {
     this.db.prepare('UPDATE sessions SET opening_message_id = ? WHERE id = ?').run(messageId, sessionId)
   }

@@ -138,7 +138,8 @@ describe('pipeline on the 40-message fixture', () => {
     const queue = t.publisher.screen(t.session.id)!
     expect(queue).toMatchObject({ view: 'queue', open: 5, group: 'Builders Hub' })
     if (queue.view !== 'queue') throw new Error()
-    expect(queue.items[0]).toMatchObject({ n: 13, title: 'When is mainnet launching?' })
+    // 14 asks from 13 people (Chen asked twice): the glasses show asks, the spec's "14 asked".
+    expect(queue.items[0]).toMatchObject({ n: 14, title: 'When is mainnet launching?' })
     for (const item of queue.items) expect(`${item.n} | ${item.title}`.length).toBeLessThanOrEqual(64)
   })
 

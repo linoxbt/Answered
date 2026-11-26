@@ -3,6 +3,7 @@
 export interface RankableCluster {
   id: string
   title: string
+  /** Unique people who asked: what ranking and mentions use. */
   askers: number
   votes: number
   lastAskAt: number | null

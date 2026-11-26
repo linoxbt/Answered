@@ -26,14 +26,18 @@ export function answerText(o: {
   summary: string
   offsetS: number
   askers: Array<{ userId: number; userName: string }>
+  /** Every ask including repeats; shown when it is more than the number of people. */
+  asks?: number
 }): string {
   const clock = sessionClock(0, o.offsetS * 1000)
   const head = o.summary ? `<b>Answered at ${clock}:</b> ${escapeHtml(o.summary)}` : `<b>Answered live at ${clock}.</b>`
   // Anonymous admins and channels post with negative ids: they can't be mentioned.
-  const people = o.askers.filter((a) => a.userId > 0)
-  const shown = people.slice(0, MAX_MENTIONS).map((a) => `<a href="tg://user?id=${a.userId}">${escapeHtml(a.userName)}</a>`)
-  const more = people.length - shown.length
-  const asked = o.askers.length > 1 ? ` (${o.askers.length} people asked this)` : ''
+  const mentionable = o.askers.filter((a) => a.userId > 0)
+  const shown = mentionable.slice(0, MAX_MENTIONS).map((a) => `<a href="tg://user?id=${a.userId}">${escapeHtml(a.userName)}</a>`)
+  const more = mentionable.length - shown.length
+  const people = o.askers.length
+  const asks = Math.max(o.asks ?? people, people)
+  const asked = asks > people ? ` (asked ${asks} times by ${people} ${people === 1 ? 'person' : 'people'})` : people > 1 ? ` (${people} people asked this)` : ''
   const mentions = shown.length ? `\n${shown.join(', ')}${more > 0 ? ` +${more} others` : ''}${asked}` : asked ? `\n${asked.trim()}` : ''
   return head + mentions
 }
@@ -58,7 +62,7 @@ export class AnswerWriter {
     const bot = this.o.bot
     const askers = this.o.store.askers(clusterId)
     if (!bot || !askers.length) return undefined
-    const text = answerText({ summary, offsetS, askers })
+    const text = answerText({ summary, offsetS, askers, asks: this.o.store.get(clusterId)?.asks })
     try {
       const reply = await this.o.outbox.enqueue(
         session.chatId,
@@ -106,7 +110,7 @@ export class AnswerWriter {
   spam(session: Session, clusterId: string): void {
     const bot = this.o.bot
     const ids = this.o.store.messageIds(clusterId)
-    this.o.store.skip(clusterId)
+    this.o.store.flag(clusterId)
     this.o.log.info({ cluster: clusterId, messages: ids.length }, 'question flagged as spam')
     if (!bot) return
     for (const id of ids) {

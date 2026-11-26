@@ -133,7 +133,7 @@ export class HostController {
     switch (mode.kind) {
       case 'taking': {
         const c = this.o.store.get(mode.clusterId)
-        return c ? { view: 'taking', id: c.id, n: c.askers, title: c.title } : undefined
+        return c ? { view: 'taking', id: c.id, n: Math.max(c.asks, c.askers), title: c.title } : undefined
       }
       case 'sending':
         return this.sendingScreen(mode)
@@ -382,7 +382,7 @@ export class HostController {
       case 'taking': {
         this.o.publisher.hold(sessionId, true)
         const c = this.o.store.get(mode.clusterId)
-        if (c) this.o.show(sessionId, { view: 'taking', id: c.id, n: c.askers, title: c.title })
+        if (c) this.o.show(sessionId, { view: 'taking', id: c.id, n: Math.max(c.asks, c.askers), title: c.title })
         return
       }
       case 'sending':

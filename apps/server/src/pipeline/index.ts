@@ -217,7 +217,8 @@ export class QueuePublisher {
       view: 'queue',
       clock: sessionClock(session.startedAt, this.now()),
       open: ranked.length,
-      items: ranked.slice(0, this.items).map((c) => ({ id: c.id, n: c.askers, title: c.title })),
+      // The glasses show every ask ("14 asked"); ranking itself counts people.
+      items: ranked.slice(0, this.items).map((c) => ({ id: c.id, n: Math.max(c.asks, c.askers), title: c.title })),
       group: session.chatTitle,
       selected: Math.min(this.selection(sessionId), Math.max(0, Math.min(ranked.length, this.items) - 1)),
     }

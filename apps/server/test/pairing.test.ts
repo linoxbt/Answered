@@ -154,7 +154,7 @@ describe('host gestures on paired glasses', () => {
     g.input('double')
     await until(() => g.screen()?.view === 'ended')
     expect(t.sessions.open(GROUP.id)).toBeUndefined()
-    await until(() => t.sent().some((s) => s.startsWith('Live Q&A ended')))
+    await until(() => t.sent().some((s) => s.startsWith('<b>Q&amp;A recap')))
 
     // The first press after the end shows the lobby; it does not start a new session by accident.
     g.input('press')

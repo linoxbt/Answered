@@ -23,6 +23,7 @@ import { registerHandlers } from './telegram/handlers.js'
 import { Outbox } from './telegram/outbox.js'
 import { DEV, GlassesHub, glassesRoutes, type Viewer } from './ws/glasses.js'
 import { HostDirectory } from './hosts.js'
+import { recapPage } from './recap.js'
 import type { Session } from './sessions.js'
 
 export interface AppDeps {
@@ -176,7 +177,12 @@ export async function buildApp(config: Config, deps: AppDeps = {}): Promise<App>
         if (host) hub.show({ view: 'lobby', group: host.chatTitle }, [viewer])
       },
     },
-    endSession: (session) => sessions.end(session.chatId),
+    // Classify what is still waiting first, so last-second questions make it into the recap.
+    endSession: (session) =>
+      void pipeline
+        .flush(session.id)
+        .catch((err) => app.log.warn({ err }, 'final classification failed'))
+        .finally(() => sessions.end(session.chatId)),
     flagSpam: (session, clusterId) => writer.spam(session, clusterId),
     log: app.log,
     now: deps.now,
@@ -204,11 +210,19 @@ export async function buildApp(config: Config, deps: AppDeps = {}): Promise<App>
       pipeline,
       publisher,
       hosts,
+      publicUrl: config.PUBLIC_URL,
       pairing: { waiting: (code) => hub.pairingWaiting(code), complete: (code, token, group) => hub.completePairing(code, token, group) },
       log: app.log,
       now: deps.now,
     })
   }
+
+  // Public recap page (no names); session ids are unguessable.
+  app.get('/recap/:id', async (req, reply) => {
+    const session = sessions.get((req.params as { id: string }).id)
+    if (!session) return reply.code(404).type('text/plain').send('No such recap.')
+    return reply.type('text/html; charset=utf-8').send(recapPage(session, store.recap(session.id)))
+  })
 
   app.get('/health', async () => ({
     ok: true,

@@ -159,7 +159,8 @@ describe('/live and /end', () => {
     await t.say(ADMIN, '/end')
     await t.settled(2)
 
-    expect(t.sent()[1]).toBe(TEXT.ended(0, 0))
+    expect(t.sent()[1]).toMatch(/^<b>Q&amp;A recap: Builders Hub<\/b>\n0 of 1 questions answered/)
+    expect(t.calls.some((c) => c.method === 'pinChatMessage')).toBe(true)
     expect(t.sessions.open(GROUP.id)).toBeUndefined()
     expect(t.db.prepare('SELECT COUNT(*) AS n FROM messages').get()).toEqual({ n: 0 })
     expect(t.hub.stats().screen).toBe('ended')

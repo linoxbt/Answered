@@ -4,6 +4,7 @@ import type { ClusterStore } from '../pipeline/clusters.js'
 import type { Pipeline, QueuePublisher } from '../pipeline/index.js'
 import type { HostDirectory } from '../hosts.js'
 import type { SessionService } from '../sessions.js'
+import { recapMessage } from '../recap.js'
 import type { Outbox } from './outbox.js'
 
 export interface HandlerDeps {
@@ -16,6 +17,8 @@ export interface HandlerDeps {
   hosts?: HostDirectory
   /** Glasses waiting with a pairing code (the glasses hub). */
   pairing?: { waiting: (code: string) => boolean; complete: (code: string, token: string, group: string) => boolean }
+  /** Public origin, for the "Full recap" link. */
+  publicUrl?: string
   now?: () => number
 }
 
@@ -125,6 +128,9 @@ export function registerHandlers(bot: Bot, deps: HandlerDeps): void {
     if (!isGroup(ctx)) return
     const chat = ctx.chat
     if (!(await isAdmin(ctx))) return say(chat.id, TEXT.adminsOnly, ctx.msg.message_id)
+    // Classify what is still waiting, so last-second questions make it into the recap.
+    const open = sessions.open(chat.id)
+    if (open) await deps.pipeline?.flush(open.id).catch((err) => log.warn({ err }, 'final classification failed'))
     const result = sessions.end(chat.id)
     if (!result) return say(chat.id, TEXT.notLive, ctx.msg.message_id)
     log.info({ session: result.session.id, ...result.stats }, 'session ended')
@@ -137,10 +143,31 @@ export function registerHandlers(bot: Bot, deps: HandlerDeps): void {
         .then((m) => sessions.setOpeningMessage(e.session.id, m.message_id))
         .catch((err) => log.warn({ err, chat: e.session.chatId }, 'opening message failed'))
     } else {
-      // Phase 6 replaces this with the pinned recap.
-      say(e.session.chatId, TEXT.ended(e.stats.clusters, e.stats.answered))
+      void postRecap(e.session)
     }
   })
+
+  /** The recap replaces the plain "ended" message, and is pinned when the bot may pin. */
+  async function postRecap(session: Parameters<typeof recapMessage>[0]): Promise<void> {
+    const chatId = session.chatId
+    const items = deps.store?.recap(session.id) ?? []
+    const page = deps.publicUrl ? `${deps.publicUrl.replace(/\/$/, '')}/recap/${session.id}` : undefined
+    try {
+      const msg = await outbox.enqueue(
+        chatId,
+        () => bot.api.sendMessage(chatId, recapMessage(session, items, page), { parse_mode: 'HTML', link_preview_options: { is_disabled: true } }),
+        { label: 'recap' },
+      )
+      sessions.setRecapMessage(session.id, msg.message_id)
+      await outbox
+        .enqueue(chatId, () => bot.api.pinChatMessage(chatId, msg.message_id, { disable_notification: true }), { label: 'pin' })
+        .catch((err) => log.warn({ err, chat: chatId }, 'pinning the recap failed (does the bot have Pin messages?)'))
+    } catch (err) {
+      log.error({ err, chat: chatId }, 'recap failed; posting the short summary instead')
+      const answered = items.filter((i) => i.status === 'answered').length
+      say(chatId, TEXT.ended(items.length, answered))
+    }
+  }
 
   // Capture every other text message (and captions) while a session is live.
   bot.on(['message:text', 'message:caption'], (ctx) => {
