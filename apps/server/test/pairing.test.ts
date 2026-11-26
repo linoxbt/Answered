@@ -211,3 +211,20 @@ describe('host gestures on paired glasses', () => {
     expect(t.store.ranked(session.id)).toHaveLength(0)
   })
 })
+
+describe('pairing code refresh', () => {
+  it('replaces the code on screen before it expires', async () => {
+    const { GlassesHub } = await import('../src/ws/glasses.js')
+    const pino = (await import('pino')).default
+    const hub = new GlassesHub(pino({ level: 'silent' }), {}, 200) // 200 ms codes, refreshed every 100 ms
+    const sent: string[] = []
+    const socket = { readyState: 1, OPEN: 1, send: (d: string) => sent.push(d), on: () => {}, close: () => {} }
+    hub.attach(socket as never, undefined)
+    const codes = () => sent.map((d) => JSON.parse(d)).filter((m) => m.view === 'pair').map((m) => m.code as string)
+    await until(() => new Set(codes()).size >= 3)
+    const latest = codes().at(-1)!
+    expect(hub.pairingWaiting(latest)).toBe(true)
+    expect(hub.pairingWaiting(codes()[0]!)).toBe(codes()[0] === latest)
+    hub.closeAll()
+  })
+})

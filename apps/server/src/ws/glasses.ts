@@ -44,6 +44,8 @@ interface Connection {
   stats: GlassesConnectionStats
   lastStatusText?: string
   statusTimer?: NodeJS.Timeout
+  /** Replaces the pairing code before it expires. */
+  pairTimer?: NodeJS.Timeout
 }
 
 export interface HubHooks {
@@ -61,13 +63,19 @@ const STATUS_REFRESH_MS = 1000
 export class GlassesHub {
   private readonly connections = new Map<string, Connection>()
   private readonly screens = new Map<Viewer, Screen>()
-  private readonly pairing = new PairingCodes<string>()
+  private readonly pairing: PairingCodes<string>
+  private readonly pairRefreshMs: number
   private totalAudioBytes = 0
 
   constructor(
     private readonly log: FastifyBaseLogger,
     private readonly hooks: HubHooks = {},
-  ) {}
+    /** Pairing codes last this long; the glasses get a fresh one shortly before. */
+    pairTtlMs = 10 * 60_000,
+  ) {
+    this.pairing = new PairingCodes<string>(pairTtlMs)
+    this.pairRefreshMs = Math.max(pairTtlMs - 30_000, pairTtlMs / 2)
+  }
 
   get size(): number {
     return this.connections.size
@@ -162,6 +170,7 @@ export class GlassesHub {
     })
     socket.on('close', (code) => {
       clearTimeout(conn.statusTimer)
+      clearInterval(conn.pairTimer)
       if (conn.pairCode) this.pairing.release(conn.pairCode)
       this.connections.delete(conn.stats.id)
       log.info({ code, audioBytes: conn.stats.audioBytes, inputs: conn.stats.inputs }, 'glasses disconnected')
@@ -169,8 +178,17 @@ export class GlassesHub {
     socket.on('error', (err) => log.warn({ err }, 'glasses socket error'))
 
     if (!viewer) {
-      conn.pairCode = this.pairing.create(conn.stats.id)
-      conn.stats.pairCode = conn.pairCode
+      const issue = () => {
+        if (conn.pairCode) this.pairing.release(conn.pairCode)
+        conn.pairCode = this.pairing.create(conn.stats.id)
+        conn.stats.pairCode = conn.pairCode
+      }
+      issue()
+      // Glasses can sit on the pairing screen for a long time: keep the code on screen valid.
+      conn.pairTimer = setInterval(() => {
+        issue()
+        this.render(conn)
+      }, this.pairRefreshMs)
       log.info('glasses waiting to pair')
     }
     this.render(conn)
@@ -251,7 +269,10 @@ export class GlassesHub {
   }
 
   closeAll(): void {
-    for (const c of this.connections.values()) c.socket.close(1001, 'server shutting down')
+    for (const c of this.connections.values()) {
+      clearInterval(c.pairTimer)
+      c.socket.close(1001, 'server shutting down')
+    }
   }
 }
 
