@@ -13,6 +13,11 @@ Built for the [Heads Up: Even Realities Hackathon](https://dorahacks.io/hackatho
 
 ![Answered's screens in the Even Hub simulator](docs/img/glasses-screens.png)
 
+A real run on the live server (26 Nov): paired glasses take a two-part question, the host answers it
+out loud, the bot replies in the group, and the session ends with a pinned recap.
+
+![A live run through the glasses](docs/img/live-run.png)
+
 ## Using it
 
 1. Add **@answereddbot** to your Telegram group as an admin (Pin messages, Delete messages).

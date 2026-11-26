@@ -182,7 +182,10 @@ export async function buildApp(config: Config, deps: AppDeps = {}): Promise<App>
       void pipeline
         .flush(session.id)
         .catch((err) => app.log.warn({ err }, 'final classification failed'))
-        .finally(() => sessions.end(session.chatId)),
+        .finally(() => {
+          const result = sessions.end(session.chatId)
+          if (result) app.log.info({ session: session.id, ...result.stats, from: 'glasses' }, 'session ended')
+        }),
     flagSpam: (session, clusterId) => writer.spam(session, clusterId),
     log: app.log,
     now: deps.now,

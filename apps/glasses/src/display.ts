@@ -159,7 +159,7 @@ export function screenToText(s: Screen): string {
     case 'still_open':
       return ['Still open', 'Say more, press if answered,', 'or swipe to skip'].join('\n')
     case 'confirm_end':
-      return ['End the session?', `${s.open} questions still open`, '', 'Double: end and post the recap', 'Press: keep going'].join('\n')
+      return ['End the session?', `${s.open} ${s.open === 1 ? 'question' : 'questions'} still open`, '', 'Double: end and post the recap', 'Press: keep going'].join('\n')
     case 'ended':
       return ['Session ended', `${s.answered} answered | ${s.open} still open`, '', 'Press to continue'].join('\n')
   }
