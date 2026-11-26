@@ -212,6 +212,46 @@ export class ClusterStore {
     return rank(rows.map(toCluster), this.now())
   }
 
+  /** The host took this question: it leaves the queue while being answered. */
+  take(clusterId: string, at: number): void {
+    this.db.prepare("UPDATE clusters SET status = 'taken', taken_at = ? WHERE id = ? AND status = 'open'").run(at, clusterId)
+  }
+
+  /** Back to the queue (host put it back, or the take was abandoned). */
+  release(clusterId: string): void {
+    this.db.prepare("UPDATE clusters SET status = 'open', taken_at = NULL WHERE id = ? AND status = 'taken'").run(clusterId)
+  }
+
+  skip(clusterId: string): void {
+    this.db.prepare("UPDATE clusters SET status = 'skipped' WHERE id = ? AND status IN ('open', 'taken')").run(clusterId)
+  }
+
+  markAnswered(clusterId: string, a: { at: number; summary: string; quote: string; offsetS: number; manual: boolean }): void {
+    this.db
+      .prepare(
+        "UPDATE clusters SET status = 'answered', answered_at = ?, summary = ?, quote = ?, answer_offset_s = ?, manual = ? WHERE id = ?",
+      )
+      .run(a.at, a.summary, a.quote, a.offsetS, a.manual ? 1 : 0, clusterId)
+  }
+
+  setReplyMessage(clusterId: string, messageId: number): void {
+    this.db.prepare('UPDATE clusters SET reply_message_id = ? WHERE id = ?').run(messageId, clusterId)
+  }
+
+  answer(clusterId: string): { summary: string | null; offsetS: number | null; replyMessageId: number | null } | undefined {
+    const r = this.db.prepare('SELECT summary, answer_offset_s, reply_message_id FROM clusters WHERE id = ?').get(clusterId) as
+      | { summary: string | null; answer_offset_s: number | null; reply_message_id: number | null }
+      | undefined
+    return r ? { summary: r.summary, offsetS: r.answer_offset_s, replyMessageId: r.reply_message_id } : undefined
+  }
+
+  /** Every captured message in a cluster (for reactions), oldest first. */
+  messageIds(clusterId: string): number[] {
+    return (this.db.prepare('SELECT message_id FROM messages WHERE cluster_id = ? AND is_question = 1 ORDER BY created_at').all(clusterId) as Array<{
+      message_id: number
+    }>).map((r) => r.message_id)
+  }
+
   /** Askers of a cluster, oldest first: who to mention in the reply (phase 4). */
   askers(clusterId: string): Array<{ userId: number; userName: string; messageId: number }> {
     const rows = this.db

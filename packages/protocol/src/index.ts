@@ -31,7 +31,7 @@ export type Screen =
   | { view: 'status'; title: string; lines: string[] }
   | { view: 'pair'; code: string; url: string }
   | { view: 'lobby'; group: string; waiting: number }
-  | { view: 'queue'; clock: string; open: number; items: QueueItem[]; group?: string }
+  | { view: 'queue'; clock: string; open: number; items: QueueItem[]; group?: string; selected?: number }
   | { view: 'taking'; id: string; n: number; title: string }
   | { view: 'sending'; n: number; summary: string; seconds: number }
   | { view: 'answered'; n: number; summary: string }

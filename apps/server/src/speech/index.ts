@@ -114,8 +114,7 @@ export class SpeechService {
   }
 
   private activeSession(): Session | undefined {
-    const live = this.o.sessions.live()
-    return live.sort((a, b) => (b.startedAt ?? 0) - (a.startedAt ?? 0))[0]
+    return this.o.sessions.active()
   }
 
   private open(session: Session): Transcriber {

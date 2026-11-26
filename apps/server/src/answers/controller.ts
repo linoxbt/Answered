@@ -1,0 +1,337 @@
+import type { FastifyBaseLogger } from 'fastify'
+import type { Gesture, Screen } from '@answered/protocol'
+import type { ClusterStore } from '../pipeline/clusters.js'
+import type { QueuePublisher } from '../pipeline/index.js'
+import type { Session, SessionService } from '../sessions.js'
+import type { SpeechService } from '../speech/index.js'
+import { rejection, type Judge, type JudgeQuestion, type Verdict } from './judge.js'
+import type { AnswerWriter } from './writer.js'
+
+/** An answer ready to post once the undo window passes. */
+interface Pending {
+  clusterId: string
+  title: string
+  askers: number
+  summary: string
+  quote: string
+  offsetS: number
+  manual: boolean
+}
+
+type Mode =
+  | { kind: 'queue'; selected: number }
+  | { kind: 'taking'; clusterId: string; takenS: number }
+  | { kind: 'sending'; clusterId: string; takenS: number; batch: Pending[]; deadline: number; timer: ReturnType<typeof setInterval> }
+  | { kind: 'flash'; next: Mode; timer: ReturnType<typeof setTimeout> }
+
+export interface ControllerOptions {
+  sessions: SessionService
+  store: ClusterStore
+  publisher: QueuePublisher
+  speech: SpeechService
+  writer: AnswerWriter
+  judge?: Judge
+  show: (screen: Screen) => void
+  log: FastifyBaseLogger
+  now?: () => number
+  /** Undo window before an answer is posted (press = send now, swipe = cancel). */
+  undoMs?: number
+  /** How long "[OK] Sent" and "Still open" stay up. */
+  flashMs?: number
+  /** Speech before the press that still counts: hosts often start answering, then press. */
+  lookbackS?: number
+  /** Longest stretch of speech the judge reads (spec: 120 s). */
+  windowS?: number
+  /** Other open questions checked alongside the taken one (spec: top 3). */
+  alsoCheck?: number
+}
+
+/**
+ * The host's side of a live session: which question is being answered, when to ask the judge,
+ * the undo window, and what the glasses show. One per server; state per session.
+ *
+ * Gestures (spec input map; phase 5 refines the screens):
+ *   queue    press = take selected · swipe = move selection · double = exit (handled by the glasses)
+ *   taking   press = mark answered by hand · swipe = skip · double = put back in the queue
+ *   sending  press = send now · swipe or double = cancel (back to taking)
+ */
+export class HostController {
+  private readonly modes = new Map<string, Mode>()
+  private readonly judging = new Map<string, { rerun: boolean }>()
+  private readonly now: () => number
+  private readonly undoMs: number
+  private readonly flashMs: number
+
+  constructor(private readonly o: ControllerOptions) {
+    this.now = o.now ?? Date.now
+    this.undoMs = o.undoMs ?? 3000
+    this.flashMs = o.flashMs ?? 2500
+    o.speech.onEvent((e) => {
+      if (e.type === 'utterance_end') void this.utteranceEnded(e.sessionId)
+    })
+    o.sessions.onEvent((e) => {
+      if (e.type === 'ended') this.clear(e.session.id)
+    })
+  }
+
+  /** Selected queue row, read by the queue publisher. */
+  selected(sessionId: string): number {
+    const m = this.modes.get(sessionId)
+    return m?.kind === 'queue' ? m.selected : 0
+  }
+
+  /** A gesture from the glasses. Returns false when it is not for a live session (the glasses' default applies). */
+  input(g: Gesture, idx?: number): boolean {
+    const session = this.o.sessions.active()
+    if (!session) return false
+    const mode = this.mode(session.id)
+    switch (mode.kind) {
+      case 'queue':
+        return this.inQueue(session, mode, g, idx)
+      case 'taking':
+        return this.inTaking(session, mode, g)
+      case 'sending':
+        return this.inSending(session, mode, g)
+      case 'flash':
+        // Any gesture just skips the flash, so a double-press here never exits by accident.
+        clearTimeout(mode.timer)
+        this.set(session.id, mode.next)
+        return true
+    }
+  }
+
+  private mode(sessionId: string): Mode {
+    return this.modes.get(sessionId) ?? { kind: 'queue', selected: 0 }
+  }
+
+  // ------------------------------------------------------------ queue
+
+  private inQueue(session: Session, mode: Extract<Mode, { kind: 'queue' }>, g: Gesture, idx?: number): boolean {
+    const ranked = this.o.store.ranked(session.id)
+    if (g === 'next' || g === 'prev') {
+      const max = Math.min(ranked.length, 5) - 1
+      const selected = Math.max(0, Math.min(max, mode.selected + (g === 'next' ? 1 : -1)))
+      this.modes.set(session.id, { kind: 'queue', selected })
+      this.o.publisher.publishNow(session.id)
+      return true
+    }
+    if (g === 'press') {
+      const cluster = ranked[idx ?? mode.selected] ?? ranked[0]
+      if (!cluster) return true
+      this.o.store.take(cluster.id, this.now())
+      this.o.writer.taken(session, cluster.id)
+      this.o.log.info({ session: session.id, cluster: cluster.id, title: cluster.title }, 'question taken')
+      this.set(session.id, { kind: 'taking', clusterId: cluster.id, takenS: this.o.speech.offset(session, this.now()) })
+      return true
+    }
+    // double: exit (the glasses' default); long: spam flag arrives in phase 5.
+    return false
+  }
+
+  // ------------------------------------------------------------ taking
+
+  private inTaking(session: Session, mode: Extract<Mode, { kind: 'taking' }>, g: Gesture): boolean {
+    if (g === 'press') {
+      void this.manual(session, mode)
+    } else if (g === 'next' || g === 'prev') {
+      this.o.store.skip(mode.clusterId)
+      this.o.log.info({ cluster: mode.clusterId }, 'question skipped')
+      this.toQueue(session.id)
+    } else if (g === 'double') {
+      this.o.store.release(mode.clusterId)
+      this.toQueue(session.id)
+    }
+    return true
+  }
+
+  /** Host pressed "answered": summary from the same transcript window, then the usual undo window. */
+  private async manual(session: Session, mode: Extract<Mode, { kind: 'taking' }>): Promise<void> {
+    const cluster = this.o.store.get(mode.clusterId)
+    if (!cluster) return
+    const transcript = this.transcript(session, mode.takenS)
+    let summary = ''
+    try {
+      if (this.o.judge && transcript) summary = await this.o.judge.summarize({ question: cluster.title, transcript })
+    } catch (err) {
+      this.o.log.warn({ err }, 'manual summary failed; posting without one')
+    }
+    if (!this.still(session.id, mode)) return
+    this.startSending(session, mode, [
+      { clusterId: cluster.id, title: cluster.title, askers: cluster.askers, summary, quote: '', offsetS: this.o.speech.offset(session, this.now()), manual: true },
+    ])
+  }
+
+  // ------------------------------------------------------------ judging
+
+  private async utteranceEnded(sessionId: string): Promise<void> {
+    const mode = this.modes.get(sessionId)
+    if (mode?.kind !== 'taking' || !this.o.judge) return
+    const running = this.judging.get(sessionId)
+    if (running) {
+      running.rerun = true // judge again with the longer transcript once this call returns
+      return
+    }
+    const state = { rerun: false }
+    this.judging.set(sessionId, state)
+    try {
+      do {
+        state.rerun = false
+        await this.judgeOnce(sessionId)
+      } while (state.rerun && this.modes.get(sessionId)?.kind === 'taking')
+    } finally {
+      this.judging.delete(sessionId)
+    }
+  }
+
+  private async judgeOnce(sessionId: string): Promise<void> {
+    const session = this.o.sessions.get(sessionId)
+    const mode = this.modes.get(sessionId)
+    if (!session || session.status !== 'live' || mode?.kind !== 'taking') return
+    const taken = this.o.store.get(mode.clusterId)
+    if (!taken) return
+    const transcript = this.transcript(session, mode.takenS)
+    if (!transcript) return
+
+    const others = this.o.store.ranked(sessionId).filter((c) => c.id !== taken.id).slice(0, this.o.alsoCheck ?? 3)
+    const questions: JudgeQuestion[] = [{ id: taken.id, title: taken.title, taken: true }, ...others.map((c) => ({ id: c.id, title: c.title, taken: false }))]
+    const started = this.now()
+    let verdicts: Verdict[] = []
+    try {
+      verdicts = await this.o.judge!.judge({ questions, transcript })
+    } catch (err) {
+      this.o.log.warn({ err }, 'judge failed; question stays open')
+    }
+    // The host may have skipped, put back or answered by hand while the judge was thinking.
+    if (!this.still(sessionId, mode)) return
+
+    const offsetS = this.o.speech.offset(session, this.now())
+    const accepted: Pending[] = []
+    for (const q of questions) {
+      const v = verdicts.find((x) => x.id === q.id)
+      const why = v ? rejection(v, q.taken, transcript) : 'no verdict'
+      const c = q.taken ? taken : others.find((o) => o.id === q.id)!
+      this.o.log.info({ session: sessionId, cluster: q.id, taken: q.taken, accepted: !why, why, confidence: v?.confidence, ms: this.now() - started }, 'judged')
+      if (!why) accepted.push({ clusterId: q.id, title: c.title, askers: c.askers, summary: v!.summary.trim(), quote: v!.quote, offsetS, manual: false })
+    }
+    // The taken question first: it is what the HUD shows.
+    accepted.sort((a, b) => Number(b.clusterId === taken.id) - Number(a.clusterId === taken.id))
+
+    if (accepted.length) return this.startSending(session, mode, accepted)
+    // Spec: the matcher fails toward "still open". The host can keep talking, skip, or press.
+    this.flash(sessionId, { view: 'still_open' }, mode)
+  }
+
+  // ------------------------------------------------------------ sending (undo window)
+
+  private startSending(session: Session, from: Extract<Mode, { kind: 'taking' }>, batch: Pending[]): void {
+    const deadline = this.now() + this.undoMs
+    const timer = setInterval(() => {
+      const m = this.modes.get(session.id)
+      if (m?.kind !== 'sending' || m.timer !== timer) return clearInterval(timer)
+      if (this.now() >= m.deadline) void this.send(session, m)
+      else this.o.show(this.sendingScreen(m))
+    }, Math.min(1000, this.undoMs))
+    const mode: Mode = { kind: 'sending', clusterId: from.clusterId, takenS: from.takenS, batch, deadline, timer }
+    this.set(session.id, mode)
+  }
+
+  private inSending(session: Session, mode: Extract<Mode, { kind: 'sending' }>, g: Gesture): boolean {
+    if (g === 'press') {
+      void this.send(session, mode)
+    } else {
+      clearInterval(mode.timer)
+      this.o.log.info({ cluster: mode.clusterId }, 'answer cancelled by host')
+      this.set(session.id, { kind: 'taking', clusterId: mode.clusterId, takenS: mode.takenS })
+    }
+    return true
+  }
+
+  private async send(session: Session, mode: Extract<Mode, { kind: 'sending' }>): Promise<void> {
+    clearInterval(mode.timer)
+    if (this.modes.get(session.id) !== mode) return
+    const first = mode.batch[0]!
+    // Show the result straight away; the replies queue behind the rate limiter.
+    this.flash(session.id, { view: 'answered', n: mode.batch.reduce((n, p) => n + p.askers, 0), summary: first.summary || 'Answered live' }, { kind: 'queue', selected: 0 })
+    for (const p of mode.batch) {
+      this.o.store.markAnswered(p.clusterId, { at: this.now(), summary: p.summary, quote: p.quote, offsetS: p.offsetS, manual: p.manual })
+      this.o.log.info({ session: session.id, cluster: p.clusterId, manual: p.manual, summary: p.summary }, 'question answered')
+    }
+    // If the host took one question but only others were answered, the taken one goes back to the queue.
+    if (!mode.batch.some((p) => p.clusterId === mode.clusterId)) this.o.store.release(mode.clusterId)
+    for (const p of mode.batch) await this.o.writer.answered(session, p.clusterId, p.summary, p.offsetS)
+  }
+
+  private sendingScreen(m: Extract<Mode, { kind: 'sending' }>): Screen {
+    const first = m.batch[0]!
+    return {
+      view: 'sending',
+      n: m.batch.reduce((n, p) => n + p.askers, 0),
+      summary: first.summary || 'Answered live',
+      seconds: Math.max(1, Math.ceil((m.deadline - this.now()) / 1000)),
+    }
+  }
+
+  // ------------------------------------------------------------ screens and helpers
+
+  private transcript(session: Session, takenS: number): string {
+    const nowS = this.o.speech.offset(session, this.now())
+    const since = Math.max(takenS - (this.o.lookbackS ?? 5), nowS - (this.o.windowS ?? 120), 0)
+    return this.o.speech
+      .segments(session.id, since)
+      .map((s) => s.text)
+      .join(' ')
+      .trim()
+  }
+
+  private still(sessionId: string, mode: Mode): boolean {
+    return this.modes.get(sessionId) === mode
+  }
+
+  private flash(sessionId: string, screen: Screen, next: Mode): void {
+    const timer = setTimeout(() => {
+      const m = this.modes.get(sessionId)
+      if (m?.kind === 'flash' && m.timer === timer) this.set(sessionId, next)
+    }, this.flashMs)
+    this.modes.set(sessionId, { kind: 'flash', next, timer })
+    this.o.publisher.hold(sessionId, true)
+    this.o.show(screen)
+  }
+
+  private toQueue(sessionId: string): void {
+    this.set(sessionId, { kind: 'queue', selected: 0 })
+  }
+
+  /** Switches mode and shows its screen. */
+  private set(sessionId: string, mode: Mode): void {
+    this.modes.set(sessionId, mode)
+    switch (mode.kind) {
+      case 'queue':
+        this.o.publisher.hold(sessionId, false)
+        this.o.publisher.publishNow(sessionId)
+        return
+      case 'taking': {
+        this.o.publisher.hold(sessionId, true)
+        const c = this.o.store.get(mode.clusterId)
+        if (c) this.o.show({ view: 'taking', id: c.id, n: c.askers, title: c.title })
+        return
+      }
+      case 'sending':
+        this.o.publisher.hold(sessionId, true)
+        this.o.show(this.sendingScreen(mode))
+        return
+      case 'flash':
+        return
+    }
+  }
+
+  private clear(sessionId: string): void {
+    const m = this.modes.get(sessionId)
+    if (m?.kind === 'sending') clearInterval(m.timer)
+    if (m?.kind === 'flash') clearTimeout(m.timer)
+    this.modes.delete(sessionId)
+  }
+
+  stop(): void {
+    for (const id of [...this.modes.keys()]) this.clear(id)
+  }
+}

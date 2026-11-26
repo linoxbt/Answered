@@ -149,15 +149,31 @@ and it removes a vendor, a key and the 0.74/0.82 threshold tuning.
 - Not done: the prerecorded-endpoint fallback (live stream reconnects instead), and filtering frames by
   the SDK's `speakerRole` (the binary frames carry no metadata yet; revisit if room audio leaks in).
 
-## Phase 4 — Answer matcher and write-back
+## Phase 4 — Answer matcher and write-back ✔ (live on Railway)
 
-- Always judge the **taken** question at each utterance end; use the embedding gate only for
-  the other top-3 open questions (a 0.50 gate drops real answers).
-- Sonnet judge with JSON output; quote check done in code after normalising case and
-  punctuation (token overlap, not exact match); confidence ≥ 0.75; 1.5 s silence.
-- Undo window: `Sending in 3s` on the HUD, press = send now, swipe = cancel.
-- Write-back: one threaded reply mentioning askers (cap 10, `+N others`), then reactions on each
-  asker's message using a standard reaction (**not ✅**, which bots cannot set; use 👌 or 💯).
+**Judge eval (`fixtures/answers.json`, 10 cases from the demo script, Claude Sonnet 5.5, 5 runs):**
+50/50 cases right, 0 false "answered", 0 missed answers, median 1.8 s per call. Cases include the
+real Deepgram transcript ("q one", "launch May"), the unlock talk-around, an answer to the wrong
+question, a related-only question, "we'll share the date next week", and an answer to a question the
+host did not take. `pnpm --filter @answered/server eval:answers` re-runs it.
+
+- When: on Deepgram's UtteranceEnd (1.5 s of silence = the spec's silence rule) while a question is
+  taken. One judge call checks the taken question plus the top 3 other open questions; a call already
+  in flight re-runs once with the longer transcript.
+- Window: speech since 5 s before the press (hosts start answering, then press), at most 120 s.
+- Judge: Sonnet 5.5, thinking off (`between_tools`), effort low, structured output, server-side
+  refusal fallbacks on (`fallbacks: "default"`); a refusal through the chain counts as not answered.
+- Accept (in code): answered, confidence ≥ 0.75 for the taken question and ≥ 0.85 for others,
+  non-empty summary, and ≥ 85 % of the quote's words found in order in the transcript after normalising
+  case, punctuation and number words ("q one" = "Q1"). Otherwise the HUD flashes Still open.
+- Undo window (3 s, `UNDO_MS`): HUD shows "Sending to N in 3s"; press = send now, swipe = cancel.
+- Write-back: one HTML reply threaded to the first asker, "Answered at MM:SS: <summary>", mentions of up
+  to 10 askers (+N others), then 👍 on each asker's message (max 15) at low priority in the same rate
+  budget; 👀 on the first asker's message when the host takes the question.
+- Manual: press while taking marks it answered; the summary comes from the same transcript window.
+- Repeats: a new message that joins an answered question gets a reply with the earlier answer and a link.
+- Gestures (phase 5 polishes the screens): queue press = take, swipe = select; taking press = answered,
+  swipe = skip, double = put back; sending press = now, swipe/double = cancel.
 
 ## Phase 5 — Glasses experience and pairing
 

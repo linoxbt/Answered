@@ -45,6 +45,8 @@ export class GlassesHub {
     private readonly log: FastifyBaseLogger,
     /** Receives every audio frame (PCM s16le 16 kHz mono) for speech-to-text. */
     private readonly audioSink: (pcm: Buffer) => void = () => {},
+    /** Gestures for the live session; returns false to fall back to the default (double = exit). */
+    private readonly inputSink: (g: Gesture, idx?: number) => boolean = () => false,
   ) {}
 
   get size(): number {
@@ -140,7 +142,8 @@ export class GlassesHub {
         conn.stats.inputs += 1
         conn.stats.lastInput = { g: msg.g, src: msg.src, idx: msg.idx, at: new Date().toISOString() }
         log.info({ g: msg.g, src: msg.src, idx: msg.idx }, 'glasses input')
-        // Double-tap is the platform's "exit app" gesture; keep it working until the real input map lands.
+        if (this.inputSink(msg.g, msg.idx)) return
+        // Double-tap is the platform's "exit app" gesture.
         if (msg.g === 'double') this.send(conn, { t: 'exit' })
         else if (!this.screen) this.pushStatus(conn)
         return

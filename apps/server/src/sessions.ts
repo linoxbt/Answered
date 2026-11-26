@@ -116,6 +116,11 @@ export class SessionService {
     return (this.db.prepare("SELECT * FROM sessions WHERE status = 'live'").all() as unknown as SessionRow[]).map(toSession)
   }
 
+  /** The session glasses input and audio belong to until pairing (phase 5): the newest live one. */
+  active(): Session | undefined {
+    return this.live().sort((a, b) => (b.startedAt ?? 0) - (a.startedAt ?? 0))[0]
+  }
+
   get(id: string): Session | undefined {
     const row = this.db.prepare('SELECT * FROM sessions WHERE id = ?').get(id) as SessionRow | undefined
     return row ? toSession(row) : undefined

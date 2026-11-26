@@ -1,0 +1,22 @@
+{
+  "description": "Answer-judging cases from the spec's demo. `expect` lists the question ids that must be marked answered; every other question must stay open. Transcripts marked deepgram are the real Railway transcript of fixtures/host.wav (with its recognition errors).",
+  "questions": {
+    "mainnet": "When is mainnet launching?",
+    "unlock": "When do tokens unlock?",
+    "bridge": "Will there be a bridge from testnet to mainnet?",
+    "staking": "Will mainnet have staking from day one?",
+    "cliff": "Are token unlocks linear or one big cliff?"
+  },
+  "cases": [
+    { "name": "mainnet answered (clean)", "taken": "mainnet", "others": ["unlock", "bridge"], "transcript": "Great question. Mainnet ships in Q1, and the public testnet opens in December.", "expect": ["mainnet"] },
+    { "name": "mainnet answered (deepgram)", "taken": "mainnet", "others": ["unlock", "bridge"], "transcript": "Great question. Mainnet ships in q one and the public testnet opens in December.", "expect": ["mainnet"] },
+    { "name": "unlock talked around (deepgram)", "taken": "unlock", "others": ["mainnet", "bridge"], "transcript": "On token unlocks, we care a lot about fairness for the community, and we are working through the details with our partners.", "expect": [] },
+    { "name": "bridge answered (deepgram)", "taken": "bridge", "others": ["unlock", "staking"], "transcript": "And, yes, there will be a bridge from testnet to mainnet on launch May.", "expect": ["bridge"] },
+    { "name": "wrong question answered", "taken": "unlock", "others": [], "transcript": "Great question. Mainnet ships in q one and the public testnet opens in December.", "expect": [] },
+    { "name": "related only: staking", "taken": "staking", "others": ["mainnet"], "transcript": "Mainnet ships in q one and the public testnet opens in December.", "expect": ["mainnet"] },
+    { "name": "promise to answer later", "taken": "mainnet", "others": [], "transcript": "Mainnet is our top priority right now and we will share the exact date in next week's update.", "expect": [] },
+    { "name": "talk-around then the bridge", "taken": "unlock", "others": ["bridge", "cliff"], "transcript": "On token unlocks, we care a lot about fairness for the community, and we are working through the details with our partners. And, yes, there will be a bridge from testnet to mainnet on launch May.", "expect": ["bridge"] },
+    { "name": "cliff answered, date not", "taken": "unlock", "others": ["cliff"], "transcript": "So unlocks are linear, monthly over two years, there is no big cliff. Dates we will confirm soon.", "expect": ["cliff"] },
+    { "name": "unlock date answered", "taken": "unlock", "others": ["cliff"], "transcript": "The first unlock is on March first, about ten percent of the supply.", "expect": ["unlock"] }
+  ]
+}

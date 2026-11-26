@@ -11,6 +11,9 @@ import { Pipeline, QueuePublisher } from './pipeline/index.js'
 import { evalRoutes } from './routes/eval.js'
 import { debugRoutes } from './routes/debug.js'
 import { deepgramFactory } from './speech/deepgram.js'
+import { HostController } from './answers/controller.js'
+import { ClaudeJudge, type Judge } from './answers/judge.js'
+import { AnswerWriter } from './answers/writer.js'
 import { SpeechService } from './speech/index.js'
 import type { TranscriberFactory } from './speech/types.js'
 import { telegramRoutes } from './routes/telegram.js'
@@ -28,6 +31,9 @@ export interface AppDeps {
   now?: () => number
   classifier?: Classifier
   transcriber?: TranscriberFactory
+  judge?: Judge
+  undoMs?: number
+  flashMs?: number
 }
 
 /** Pino logger whose request serializer hides the glasses token in query strings. */
@@ -53,6 +59,7 @@ export interface App {
   pipeline: Pipeline
   publisher: QueuePublisher
   speech: SpeechService
+  controller: HostController
 }
 
 export async function buildApp(config: Config, deps: AppDeps = {}): Promise<App> {
@@ -62,7 +69,11 @@ export async function buildApp(config: Config, deps: AppDeps = {}): Promise<App>
   await app.register(websocket, { options: { maxPayload: 1 << 20 } })
 
   // `speech` is created below; audio only arrives once the server is listening.
-  const hub = new GlassesHub(app.log, (pcm) => speech.audio(pcm))
+  const hub = new GlassesHub(
+    app.log,
+    (pcm) => speech.audio(pcm),
+    (g, idx) => controller.input(g, idx),
+  )
   const db = openDb(config.DATABASE_URL)
   const sessions = new SessionService(db, deps.now)
   const outbox =
@@ -86,7 +97,12 @@ export async function buildApp(config: Config, deps: AppDeps = {}): Promise<App>
     log: app.log,
     batchMs: config.CLASSIFY_BATCH_MS,
     onQueueChanged: (sessionId) => publisher.changed(sessionId),
+    onAnsweredRepeat: (sessionId, clusterId, messageId) => {
+      const session = sessions.get(sessionId)
+      if (session) writer.repeat(session, clusterId, messageId)
+    },
   })
+  const writer = new AnswerWriter({ bot: deps.bot, outbox, store, log: app.log })
 
   sessions.onEvent((e) => {
     if (e.type === 'started') {
@@ -104,6 +120,23 @@ export async function buildApp(config: Config, deps: AppDeps = {}): Promise<App>
       : undefined)
   const speech = new SpeechService({ db, sessions, log: app.log, factory: transcriber, now: deps.now })
   app.log.info({ speech: transcriber ? 'deepgram' : 'off' }, 'speech to text')
+
+  const judge = deps.judge ?? (config.ANTHROPIC_API_KEY ? new ClaudeJudge(config.ANTHROPIC_API_KEY, config.LLM_JUDGE_MODEL) : undefined)
+  const controller = new HostController({
+    sessions,
+    store,
+    publisher,
+    speech,
+    writer,
+    judge,
+    show: (screen) => hub.show(screen),
+    log: app.log,
+    now: deps.now,
+    undoMs: deps.undoMs ?? config.UNDO_MS,
+    flashMs: deps.flashMs,
+  })
+  publisher.setSelection((id) => controller.selected(id))
+  app.log.info({ judge: judge ? config.LLM_JUDGE_MODEL : 'off (manual answers only)' }, 'answer judge')
 
   // After a restart or redeploy mid-session: classify what arrived meanwhile and restore the queue screen.
   for (const session of sessions.live()) {
@@ -128,10 +161,11 @@ export async function buildApp(config: Config, deps: AppDeps = {}): Promise<App>
 
   app.addHook('onClose', async () => {
     pipeline.stop()
+    controller.stop()
     await speech.close()
     hub.closeAll()
     db.close()
   })
 
-  return { app, hub, db, sessions, outbox, store, pipeline, publisher, speech }
+  return { app, hub, db, sessions, outbox, store, pipeline, publisher, speech, controller }
 }

@@ -26,6 +26,11 @@ const ConfigSchema = z
     /** Labelled demo messages for GET /debug/eval. */
     FIXTURES_PATH: z.string().default(new URL('../../../fixtures/questions.json', import.meta.url).pathname),
 
+    /** Answer judge (phase 4). Uses ANTHROPIC_API_KEY; without it only manual "answered" presses work. */
+    LLM_JUDGE_MODEL: z.string().default('claude-sonnet-5-5'),
+    /** Undo window before an answer is posted to the group. */
+    UNDO_MS: z.coerce.number().int().min(0).default(3000),
+
     /** Speech-to-text (phase 3). Without a key, glasses audio is counted but not transcribed. */
     DEEPGRAM_API_KEY: optional,
     DEEPGRAM_URL: z.string().default('wss://api.deepgram.com/v1/listen'),

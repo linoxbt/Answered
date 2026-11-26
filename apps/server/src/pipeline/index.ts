@@ -12,6 +12,8 @@ export interface PipelineOptions {
   log: FastifyBaseLogger
   /** Called whenever a session's queue may have changed. */
   onQueueChanged: (sessionId: string) => void
+  /** A new message asks a question that was already answered (phase 4 replies with the answer). */
+  onAnsweredRepeat?: (sessionId: string, clusterId: string, messageId: number) => void
   /** Spec: classify in batches every 2 s. */
   batchMs?: number
   maxBatch?: number
@@ -110,7 +112,11 @@ export class Pipeline {
       // The session may have ended while the model was thinking.
       const still = sessions.get(sessionId)
       if (!still || still.status !== 'live') return
+      const answered = new Set(store.assignable(sessionId).filter((c) => c.status === 'answered').map((c) => c.id))
       const touched = store.apply(sessionId, still.chatId, results)
+      for (const r of results) {
+        if (r.isQuestion && !r.spam && answered.has(r.cluster)) this.o.onAnsweredRepeat?.(sessionId, r.cluster, r.messageId)
+      }
       // Anything the classifier left out would otherwise come back in every batch.
       const covered = new Set(results.map((r) => r.messageId))
       const skipped = candidates.filter((m) => !covered.has(m.messageId)).map((m) => m.messageId)
@@ -149,6 +155,8 @@ export function sessionClock(startedAt: number | null, now: number): string {
 export class QueuePublisher {
   private readonly last = new Map<string, { at: number; signature: string }>()
   private readonly timers = new Map<string, ReturnType<typeof setTimeout>>()
+  private readonly held = new Set<string>()
+  private selection: (sessionId: string) => number = () => 0
   private readonly now: () => number
   private readonly minGapMs: number
   private readonly items: number
@@ -159,9 +167,20 @@ export class QueuePublisher {
     this.items = o.items ?? 5
   }
 
+  /** Which row the host has selected (the host controller owns it). */
+  setSelection(fn: (sessionId: string) => number): void {
+    this.selection = fn
+  }
+
+  /** While the host is taking a question, the queue must not overwrite the glasses. */
+  hold(sessionId: string, on: boolean): void {
+    if (on) this.held.add(sessionId)
+    else this.held.delete(sessionId)
+  }
+
   /** The queue for this session may have changed. */
   changed(sessionId: string): void {
-    if (this.timers.has(sessionId)) return
+    if (this.timers.has(sessionId) || this.held.has(sessionId)) return
     const last = this.last.get(sessionId)
     const wait = last ? last.at + this.minGapMs - this.now() : 0
     if (wait <= 0) return this.publish(sessionId)
@@ -176,6 +195,7 @@ export class QueuePublisher {
 
   /** Shows the queue straight away (session start, resume) regardless of throttling. */
   publishNow(sessionId: string): void {
+    if (this.held.has(sessionId)) return
     clearTimeout(this.timers.get(sessionId))
     this.timers.delete(sessionId)
     this.last.delete(sessionId)
@@ -183,6 +203,7 @@ export class QueuePublisher {
   }
 
   forget(sessionId: string): void {
+    this.held.delete(sessionId)
     clearTimeout(this.timers.get(sessionId))
     this.timers.delete(sessionId)
     this.last.delete(sessionId)
@@ -198,14 +219,16 @@ export class QueuePublisher {
       open: ranked.length,
       items: ranked.slice(0, this.items).map((c) => ({ id: c.id, n: c.askers, title: c.title })),
       group: session.chatTitle,
+      selected: Math.min(this.selection(sessionId), Math.max(0, Math.min(ranked.length, this.items) - 1)),
     }
   }
 
   private publish(sessionId: string): void {
+    if (this.held.has(sessionId)) return
     const screen = this.screen(sessionId)
     if (!screen || screen.view !== 'queue') return
     // The clock is left out of the signature: it alone is no reason to rebuild the list.
-    const signature = JSON.stringify([screen.open, screen.items])
+    const signature = JSON.stringify([screen.open, screen.items, screen.selected])
     const last = this.last.get(sessionId)
     if (last?.signature === signature) return
     this.last.set(sessionId, { at: this.now(), signature })

@@ -91,7 +91,7 @@ export function screenToText(s: Screen): string {
       return [
         `LIVE ${s.clock} | ${s.open} open`,
         ...(s.items.length
-          ? s.items.slice(0, 5).map((i) => `${i.n} | ${i.title}`)
+          ? s.items.slice(0, 5).map((i, k) => `${k === (s.selected ?? 0) ? '>' : ' '}${i.n} | ${i.title}`)
           : ['', s.group ? `Listening in ${s.group}` : 'Listening', 'Waiting for questions...']),
       ].join('\n')
     case 'taking':
