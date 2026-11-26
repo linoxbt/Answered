@@ -287,3 +287,28 @@ describe('reply text', () => {
     expect(messageLink({ chatId: -5168349314, chatUsername: null }, 7)).toBeUndefined()
   })
 })
+
+describe('restart', () => {
+  it('puts questions that were being answered back in the queue', async () => {
+    const { mkdtempSync, rmSync } = await import('node:fs')
+    const { tmpdir } = await import('node:os')
+    const { join } = await import('node:path')
+    const dir = mkdtempSync(join(tmpdir(), 'answered-'))
+    const config = loadConfig({ LOG_LEVEL: 'silent', DATABASE_URL: `file:${join(dir, 'a.db')}`, GLASSES_DEV_TOKEN: 't' })
+    try {
+      const before = await buildApp(config)
+      const { session } = before.sessions.start({ chatId: CHAT, chatTitle: 'G', host: { tgUserId: 1, name: 'H' } })
+      before.sessions.capture(CHAT, { messageId: 1, userId: 2, userName: 'A', text: 'wen mainnet', at: Date.now() })
+      before.store.apply(session.id, CHAT, [{ messageId: 1, isQuestion: true, spam: false, canonical: MAINNET, cluster: 'new:m' }])
+      before.controller.input('press')
+      expect(before.store.ranked(session.id)).toHaveLength(0)
+      await before.app.close()
+
+      const after = await buildApp(config)
+      expect(after.store.ranked(session.id).map((c) => c.title)).toEqual([MAINNET])
+      await after.app.close()
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})

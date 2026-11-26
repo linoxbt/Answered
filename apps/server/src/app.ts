@@ -140,6 +140,9 @@ export async function buildApp(config: Config, deps: AppDeps = {}): Promise<App>
 
   // After a restart or redeploy mid-session: classify what arrived meanwhile and restore the queue screen.
   for (const session of sessions.live()) {
+    // The host's in-progress take lived in memory: put those questions back in the queue.
+    const released = store.releaseTaken(session.id)
+    if (released) app.log.info({ session: session.id, released }, 'released questions taken before the restart')
     pipeline.captured(session.id)
     publisher.publishNow(session.id)
     app.log.info({ session: session.id, chat: session.chatId }, 'resumed live session')

@@ -217,6 +217,11 @@ export class ClusterStore {
     this.db.prepare("UPDATE clusters SET status = 'taken', taken_at = ? WHERE id = ? AND status = 'open'").run(at, clusterId)
   }
 
+  /** After a restart nobody is mid-answer: taken questions go back to the queue. Returns how many. */
+  releaseTaken(sessionId: string): number {
+    return Number(this.db.prepare("UPDATE clusters SET status = 'open', taken_at = NULL WHERE session_id = ? AND status = 'taken'").run(sessionId).changes)
+  }
+
   /** Back to the queue (host put it back, or the take was abandoned). */
   release(clusterId: string): void {
     this.db.prepare("UPDATE clusters SET status = 'open', taken_at = NULL WHERE id = ? AND status = 'taken'").run(clusterId)
