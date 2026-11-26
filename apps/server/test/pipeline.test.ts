@@ -106,7 +106,7 @@ describe('ranking', () => {
 })
 
 describe('pipeline on the 40-message fixture', () => {
-  it('detects, merges and ranks with one batch per 30 messages', async () => {
+  it('detects, merges and ranks in batches of at most 10', async () => {
     const classifier = new ScriptedClassifier(fixtureLabel)
     const t = setup(classifier)
     const ids = FIXTURES.map((f) => t.capture(f))
@@ -118,7 +118,7 @@ describe('pipeline on the 40-message fixture', () => {
     // The prefilter keeps chatter away from the model; batches stay within 30 messages.
     const sent = classifier.calls.flatMap((c) => c.messages.map((m) => m.text))
     expect(sent).not.toContain('gm gm')
-    expect(classifier.calls.every((c) => c.messages.length <= 30)).toBe(true)
+    expect(classifier.calls.every((c) => c.messages.length <= 10)).toBe(true)
 
     const ranked = t.store.ranked(t.session.id)
     expect(ranked.map((c) => [c.title, c.askers])).toEqual([

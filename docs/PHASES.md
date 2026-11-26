@@ -78,7 +78,14 @@ Anthropic key, OpenAI key (or skip, see phase 2), Railway project.
 - Glasses follow the live session (queue screen on `/live`, end screen on `/end`) until pairing.
 - Tests: 35 (fake Bot API through grammY's transformer, fake clock for the outbox).
 
-## Phase 2 — Question pipeline ✔ (code complete; Haiku runs once ANTHROPIC_API_KEY is set)
+## Phase 2 — Question pipeline ✔ (live on Railway with Claude Haiku 5.5)
+
+**Scorecard on the spec's 40-message burst (Haiku, 3 runs, arrival in small batches):**
+26/26 questions detected, 100 % merged, 5 clusters (expected 5), 0 false merges, 0 chatter as
+questions, 2/2 spam caught, median batch 1.3 s. The first prompt merged "when does the cliff end?"
+with "linear or cliff?" on every run; the fix was to group only questions that one answer would
+fully settle. A single 30-message batch fell to 77 % merged, so calls are capped at 10 messages
+(a 30-message backlog then scores 96 %, 0 false merges).
 
 Decision: **no OpenAI embeddings.** One Claude Haiku 5.5 call per batch both classifies and
 clusters (structured output: `is_question`, `spam`, `canonical`, `cluster` = existing id or

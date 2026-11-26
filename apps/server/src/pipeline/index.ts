@@ -30,7 +30,8 @@ export class Pipeline {
 
   constructor(private readonly o: PipelineOptions) {
     this.batchMs = o.batchMs ?? 2000
-    this.maxBatch = o.maxBatch ?? 30
+    // Measured: 10 per call keeps merges at 100% on the fixtures; one 30-message call drops to ~77%.
+    this.maxBatch = o.maxBatch ?? 10
   }
 
   /** A message was stored for this session. */

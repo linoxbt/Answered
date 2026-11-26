@@ -23,7 +23,7 @@ For every message, return:
 - is_question: true only if it asks the host for information or a decision. Greetings, hype, opinions, thanks and replies to other users are not questions.
 - spam: true for scams, shilling other projects, suspicious links or flooding.
 - canonical: the question rewritten as a short, neutral English question of at most ${TITLE_MAX} characters, using only facts stated in the message. Never add facts. Empty when not a question.
-- cluster: for questions only, otherwise empty. Use an existing cluster's id when the message asks the same thing. Questions on the same topic that ask for different information are different questions: "When is mainnet?" and "Will mainnet have staking?" go in different clusters. Clusters marked answered are still valid targets. When no cluster matches, use "new:" plus a short label, and give questions in this batch that ask the same new thing the same label.
+- cluster: for questions only, otherwise empty. Two questions belong together only if one answer from the host would fully answer both. Sharing a topic or keywords is not enough: a question about timing ("when does the cliff end?") and one about how something works ("is it linear or a cliff?") need different answers, and so do "When is mainnet?" and "Will mainnet have staking?". Use an existing cluster's id when that cluster's question needs the same answer; clusters marked answered are still valid targets. Otherwise use "new:" plus a short label, and give questions in this batch that need the same new answer the same label.
 
 Return exactly one result per message, using the message's id.`
 
