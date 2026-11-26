@@ -85,8 +85,9 @@ describe('text rules', () => {
     const long = 'When exactly is the mainnet launch going to happen for the community and early backers?'
     expect(clampTitle(long).length).toBeLessThanOrEqual(56)
     expect(clampTitle(long).endsWith('...')).toBe(true)
-    expect(pickTitle(['Mainnet?', 'When is mainnet launching?', 'When will the mainnet be launched for everyone?'])).toBe('When is mainnet launching?')
-    expect(pickTitle(['Mainnet?', 'Wen?'])).toBe('Wen?')
+    // Earliest with 4+ words, so later narrow variants don't take over the title.
+    expect(pickTitle(['Mainnet?', 'When will mainnet launch for everyone?', 'Is mainnet Q1 or Q2?'])).toBe('When will mainnet launch for everyone?')
+    expect(pickTitle(['Mainnet?', 'Wen?'])).toBe('Mainnet?')
   })
 })
 
@@ -262,27 +263,58 @@ describe('classifiers', () => {
     expect(merged.find((r) => r.messageId === 1)!.canonical).toBe('Q?')
   })
 
-  it('Claude: sends one structured-output request to Haiku with thinking off', async () => {
+  /** Fake Messages API: answers the classify call and the verify call from canned JSON. */
+  function fakeClaude(classify: unknown, verify: unknown) {
     const requests: Array<{ url: string; body: Record<string, unknown> }> = []
     const fetch = async (url: string | URL | Request, init?: RequestInit) => {
-      requests.push({ url: String(url), body: JSON.parse(String(init?.body)) })
-      const results = { results: [{ id: 7, is_question: true, spam: false, canonical: 'When is mainnet?', cluster: 'c_abc' }] }
+      const body = JSON.parse(String(init?.body)) as Record<string, unknown>
+      requests.push({ url: String(url), body })
+      const isVerify = String(body.system).startsWith('You check whether')
       return new Response(
         JSON.stringify({
           id: 'msg_1', type: 'message', role: 'assistant', model: 'claude-haiku-5-5', stop_reason: 'end_turn', stop_sequence: null,
-          content: [{ type: 'text', text: JSON.stringify(results) }],
+          content: [{ type: 'text', text: JSON.stringify(isVerify ? verify : classify) }],
           usage: { input_tokens: 10, output_tokens: 10 },
         }),
         { status: 200, headers: { 'content-type': 'application/json' } },
       )
     }
-    const c = new ClaudeClassifier('sk-test', 'claude-haiku-5-5', 'https://api.anthropic.com', fetch)
-    const out = await c.classify({ clusters: [{ id: 'c_abc', title: 'When is mainnet?', status: 'open' }], messages: [{ id: 7, text: 'wen mainnet', isReply: false }] })
+    return { requests, classifier: new ClaudeClassifier('sk-test', 'claude-haiku-5-5', 'https://api.anthropic.com', fetch) }
+  }
+  const clusters = [{ id: 'c_abc', title: 'When do tokens unlock?', status: 'open' as const }]
 
-    expect(out).toEqual([{ messageId: 7, isQuestion: true, spam: false, canonical: 'When is mainnet?', cluster: 'c_abc' }])
+  it('Claude: one structured-output request to Haiku with thinking off, then a check of each join', async () => {
+    const { requests, classifier } = fakeClaude(
+      { results: [{ id: 7, is_question: true, spam: false, canonical: 'When do tokens unlock?', cluster: 'c_abc' }] },
+      { pairs: [{ id: 7, same: true }] },
+    )
+    const out = await classifier.classify({ clusters, messages: [{ id: 7, text: 'unlock when', isReply: false }] })
+
+    expect(out).toEqual([{ messageId: 7, isQuestion: true, spam: false, canonical: 'When do tokens unlock?', cluster: 'c_abc' }])
+    expect(requests).toHaveLength(2)
     expect(requests[0]!.url).toBe('https://api.anthropic.com/v1/messages')
-    const body = requests[0]!.body
-    expect(body).toMatchObject({ model: 'claude-haiku-5-5', thinking: { type: 'disabled' }, output_config: { effort: 'low' } })
-    expect((body.output_config as { format: { type: string } }).format.type).toBe('json_schema')
+    expect(requests[0]!.body).toMatchObject({ model: 'claude-haiku-5-5', thinking: { type: 'disabled' }, output_config: { effort: 'low' } })
+    expect((requests[0]!.body.output_config as { format: { type: string } }).format.type).toBe('json_schema')
+    expect(JSON.parse((requests[1]!.body.messages as Array<{ content: string }>)[0]!.content)).toEqual({
+      pairs: [{ id: 7, a: 'When do tokens unlock?', b: 'unlock when' }],
+    })
+  })
+
+  it('Claude: a join the check rejects starts a new cluster', async () => {
+    const { classifier } = fakeClaude(
+      { results: [{ id: 8, is_question: true, spam: false, canonical: 'Are unlocks linear?', cluster: 'c_abc' }] },
+      { pairs: [{ id: 8, same: false }] },
+    )
+    const out = await classifier.classify({ clusters, messages: [{ id: 8, text: 'linear or cliff?', isReply: false }] })
+    expect(out[0]!.cluster).toBe('new:split-8')
+  })
+
+  it('Claude: no join, no second call', async () => {
+    const { requests, classifier } = fakeClaude(
+      { results: [{ id: 9, is_question: true, spam: false, canonical: 'Staking at launch?', cluster: 'new:staking' }] },
+      { pairs: [] },
+    )
+    await classifier.classify({ clusters, messages: [{ id: 9, text: 'staking at launch?', isReply: false }] })
+    expect(requests).toHaveLength(1)
   })
 })

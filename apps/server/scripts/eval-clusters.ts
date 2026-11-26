@@ -23,3 +23,4 @@ if (run.misses.length) {
   console.log('\nMisclassified:')
   for (const m of run.misses) console.log(`  [${m.expect ?? 'chatter'}] ${JSON.stringify(m.text)} -> ${m.got}`)
 }
+for (const group of run.scorecard.mixed) console.log(`\nMixed cluster:\n  ${group.join('\n  ')}`)

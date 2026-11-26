@@ -33,6 +33,8 @@ export interface Scorecard {
   merged: number
   /** Clusters that mix two different labels: the "related but different" failure. */
   falseMerges: number
+  /** The messages in each mixed cluster, for debugging a false merge. */
+  mixed: string[][]
   /** Chatter marked as a question. */
   falsePositives: number
   spamCaught: number
@@ -60,10 +62,12 @@ export function score(fixtures: FixtureMessage[], outcomes: Outcome[]): Scorecar
 
   // Clusters whose members carry more than one label.
   const labelsByCluster = new Map<string, Set<string>>()
+  const textsByCluster = new Map<string, string[]>()
   for (const { f, o } of detected) {
     const set = labelsByCluster.get(o.clusterId!) ?? new Set<string>()
     set.add(f.expect!)
     labelsByCluster.set(o.clusterId!, set)
+    textsByCluster.set(o.clusterId!, [...(textsByCluster.get(o.clusterId!) ?? []), `[${f.expect}] ${f.text}`])
   }
 
   const spam = pairs.filter((p) => p.f.expect === 'spam')
@@ -73,6 +77,7 @@ export function score(fixtures: FixtureMessage[], outcomes: Outcome[]): Scorecar
     detection: questions.length ? detected.length / questions.length : 1,
     merged: detected.length ? inMain / detected.length : 1,
     falseMerges: [...labelsByCluster.values()].filter((s) => s.size > 1).length,
+    mixed: [...labelsByCluster.entries()].filter(([, s]) => s.size > 1).map(([id]) => textsByCluster.get(id)!),
     falsePositives: pairs.filter((p) => p.f.expect === null && isQ(p.o)).length,
     spamCaught: spam.filter((p) => p.o.spam || !p.o.isQuestion).length,
     spamTotal: spam.length,

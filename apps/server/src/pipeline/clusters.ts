@@ -135,7 +135,9 @@ export class ClusterStore {
   /** Recomputes askers, votes, title and last ask time from the cluster's messages. */
   refresh(clusterId: string): void {
     const members = this.db
-      .prepare('SELECT user_id, canonical, created_at, anon_reactions FROM messages WHERE cluster_id = ? AND is_question = 1')
+      .prepare(
+        'SELECT user_id, canonical, created_at, anon_reactions FROM messages WHERE cluster_id = ? AND is_question = 1 ORDER BY created_at, message_id',
+      )
       .all(clusterId) as Array<{ user_id: number; canonical: string; created_at: number; anon_reactions: number }>
 
     const status = (this.db.prepare('SELECT status FROM clusters WHERE id = ?').get(clusterId) as { status: ClusterStatus } | undefined)?.status

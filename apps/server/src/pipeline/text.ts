@@ -30,13 +30,16 @@ export function clampTitle(text: string): string {
   return `${(space > 20 ? cut.slice(0, space) : cut).replace(/[\s,;:-]+$/, '')}...`
 }
 
-/** The spec's title rule: the shortest canonical with at least 4 words, else the shortest. */
+/**
+ * Cluster title: the earliest canonical with at least 4 words (else the earliest), so the title
+ * stays put as people pile on. The spec's "shortest" rule made titles jump to narrow variants
+ * such as "Is mainnet Q1 or Q2?" and forced extra list rebuilds on the glasses.
+ * `canonicals` must be in asking order.
+ */
 export function pickTitle(canonicals: string[]): string {
   const clean = canonicals.map((c) => c.trim()).filter(Boolean)
   if (!clean.length) return ''
-  const words = (s: string) => s.split(/\s+/).length
-  const byLength = [...clean].sort((a, b) => a.length - b.length || a.localeCompare(b))
-  return clampTitle(byLength.find((c) => words(c) >= 4) ?? byLength[0]!)
+  return clampTitle(clean.find((c) => c.split(/\s+/).length >= 4) ?? clean[0]!)
 }
 
 const STOP = new Set(

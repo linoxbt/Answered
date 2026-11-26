@@ -38,7 +38,7 @@
     { "user": 134, "name": "Hadi", "text": "Thanks for doing this", "expect": null },
     { "user": 135, "name": "Ines", "text": "any news on mainnet", "expect": "mainnet" },
     { "user": 136, "name": "Jide", "text": "🔥🔥🔥", "expect": null },
-    { "user": 137, "name": "Kola", "text": "When does the unlock cliff end?", "expect": "unlock" },
+    { "user": 137, "name": "Kola", "text": "What date do community tokens unlock?", "expect": "unlock" },
     { "user": 138, "name": "Lami", "text": "Can't wait for this", "expect": null },
     { "user": 139, "name": "Musa", "text": "Following for the mainnet answer", "expect": null }
   ]

@@ -41,6 +41,13 @@ const ResultSchema = z.object({
 
 export class RefusalError extends Error {}
 
+export const VERIFY_SYSTEM = `You check whether two audience questions from a live Q&A can share one answer.
+For each pair, same is true only if a single answer from the host would fully answer both questions.
+Same topic is not enough: "When do tokens unlock?" and "Are unlocks linear or one big cliff?" are different (a date versus how the unlock works).
+Wording, slang, vagueness and extra precision do not make questions different when the same answer settles them: "wen mainnet ser??", "any news on mainnet?" and "Is mainnet Q1 or Q2?" all ask when mainnet ships; "When will investor tokens unlock?" is answered by the unlock dates.`
+
+const VerifySchema = z.object({ pairs: z.array(z.object({ id: z.number().int(), same: z.boolean() })) })
+
 /** One structured-output call per batch: classification and clustering together. */
 export class ClaudeClassifier implements Classifier {
   readonly name = 'claude'
@@ -75,7 +82,7 @@ export class ClaudeClassifier implements Classifier {
     if (!response.parsed_output) throw new Error(`classifier returned no parsable output (stop_reason ${response.stop_reason})`)
 
     const asked = new Set(input.messages.map((m) => m.id))
-    return response.parsed_output.results
+    const results = response.parsed_output.results
       .filter((r) => asked.has(r.id))
       .map((r) => ({
         messageId: r.id,
@@ -84,6 +91,39 @@ export class ClaudeClassifier implements Classifier {
         canonical: r.canonical,
         cluster: r.cluster,
       }))
+    return this.verifyJoins(results, input)
+  }
+
+  /**
+   * Second, focused check (the spec's "are these the same question?"): every question the first
+   * call put into an existing cluster is checked against that cluster. A rejected join starts a
+   * new cluster: an extra row in the queue is cheap, telling someone they were answered is not.
+   */
+  private async verifyJoins(results: Classification[], input: ClassifyInput): Promise<Classification[]> {
+    const titles = new Map(input.clusters.map((c) => [c.id, c.title]))
+    const text = new Map(input.messages.map((m) => [m.id, m.text]))
+    const joins = results.filter((r) => r.isQuestion && !r.spam && titles.has(r.cluster))
+    if (!joins.length) return results
+
+    const response = await this.client.messages.parse({
+      model: this.model,
+      max_tokens: 4000,
+      thinking: { type: 'disabled' },
+      output_config: { effort: 'low', format: zodOutputFormat(VerifySchema) },
+      system: VERIFY_SYSTEM,
+      messages: [
+        {
+          role: 'user',
+          content: JSON.stringify({
+            pairs: joins.map((r) => ({ id: r.messageId, a: titles.get(r.cluster), b: text.get(r.messageId) })),
+          }),
+        },
+      ],
+    })
+    // If the check itself fails, keep the first call's answer rather than dropping the batch.
+    if (response.stop_reason === 'refusal' || !response.parsed_output) return results
+    const rejected = new Set(response.parsed_output.pairs.filter((p) => !p.same).map((p) => p.id))
+    return results.map((r) => (rejected.has(r.messageId) ? { ...r, cluster: `new:split-${r.messageId}` } : r))
   }
 }
 

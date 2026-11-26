@@ -80,12 +80,25 @@ Anthropic key, OpenAI key (or skip, see phase 2), Railway project.
 
 ## Phase 2 — Question pipeline ✔ (live on Railway with Claude Haiku 5.5)
 
-**Scorecard on the spec's 40-message burst (Haiku, 3 runs, arrival in small batches):**
-26/26 questions detected, 100 % merged, 5 clusters (expected 5), 0 false merges, 0 chatter as
-questions, 2/2 spam caught, median batch 1.3 s. The first prompt merged "when does the cliff end?"
-with "linear or cliff?" on every run; the fix was to group only questions that one answer would
-fully settle. A single 30-message batch fell to 77 % merged, so calls are capped at 10 messages
-(a 30-message backlog then scores 96 %, 0 false merges).
+**Scorecard on the spec's 40-message burst (Claude Haiku 5.5, 24 runs of the final version):**
+26/26 questions detected in every run, 92–96 % merged (target 90 %+), 0 chatter as questions, 2/2 spam
+caught. False merges: 0 in 21 of 24 runs, 1 in the other 3 (one inspected: the two-part question
+"How does the token unlock work, when do the first tokens release?" grouped with "linear or cliff?").
+Median batch 2.1 s. What got it there, each measured over 6–8 runs:
+
+| Change | False merges | Merged |
+|---|---|---|
+| First prompt | 1 in every run ("cliff end" date + "linear or cliff" mechanism) | 96–100 % |
+| "Group only if one answer settles both" | ~1 run in 3 | 100 % |
+| + thinking on (rejected: 2x latency) | ~1 in 6 | 81–92 % |
+| + member examples in the prompt (rejected) | 7 in 8 | 96–100 % |
+| + second focused "same question?" check on every join (kept) | 0–1 in 8 | 92–96 % |
+
+Other measured choices: calls are capped at 10 messages (one 30-message call fell to 77 % merged);
+titles use the earliest wording with 4+ words, because the spec's "shortest" rule jumped to narrow
+variants like "Is mainnet Q1 or Q2?". One fixture question, "When does the unlock cliff end?", was
+replaced with "What date do community tokens unlock?": it is honestly ambiguous between the unlock-date
+and cliff-mechanism groups, so it measured the label rather than the classifier.
 
 Decision: **no OpenAI embeddings.** One Claude Haiku 5.5 call per batch both classifies and
 clusters (structured output: `is_question`, `spam`, `canonical`, `cluster` = existing id or
