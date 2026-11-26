@@ -27,7 +27,20 @@ Fallback without the model (keyword heuristic, used if Claude is down): 100% det
 | Real answers missed | 0 | 0 |
 | Median judge call | 1752 ms | |
 
-## Latency (live, Railway)
+## Latency (end to end, real Deepgram and Claude)
 
-Host stops talking → reply in the Telegram group, measured from Deepgram's end-of-speech time to the
-posted reply (logged as `answer posted` with `latencyMs`). See the section below, filled from a rehearsal.
+Host stops talking → reply posted, measured by the server from Deepgram's end-of-speech time to the
+posted reply (`answer posted`, `latencyMs`). 3 runs of `fixtures/host.wav` through the real pipeline
+(Deepgram streaming, Haiku classification, Sonnet judge) with a stubbed Telegram send (~0.3 s in production):
+
+| Run | Latency |
+|---|---|
+| 1 | 6.37 s |
+| 2 | 6.11 s |
+| 3 | 5.96 s |
+| **Median** | **6.11 s** (target: 6 s or less) |
+
+That includes the 3 s undo window (`UNDO_MS=3000`), which the spec did not have; the pipeline itself takes
+about 3.1 s (1.5 s end-of-speech detection + ~1.6 s judge call). `UNDO_MS=2500` brings the median to ~5.6 s.
+
+Earlier live check on Railway (26 Nov, real group): 6.7 s from the end of the spoken answer to the reply.

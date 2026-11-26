@@ -8,8 +8,8 @@ everyone who asked. A question that was only talked around stays open.
 Built for the [Heads Up: Even Realities Hackathon](https://dorahacks.io/hackathon/even-realities/detail)
 (Track 01 · Messaging & News). The build plan is in [docs/PHASES.md](docs/PHASES.md).
 
-> Status: **phases 0-5 of 0-7 done**: pairing, glasses screens, question ranking, spoken answers
-> and Telegram replies all work end to end. The pinned recap and demo tooling land in phase 6.
+> Status: **phases 0-6 of 0-7 done**: pairing, glasses screens, question ranking, spoken answers,
+> Telegram replies and the pinned recap all work end to end. Results: [docs/SCORECARD.md](docs/SCORECARD.md).
 
 ![Answered's screens in the Even Hub simulator](docs/img/glasses-screens.png)
 
@@ -99,6 +99,18 @@ printf 'pcm.!default { type pulse }\nctl.!default { type pulse }\n' > ~/.asoundr
 xvfb-run -a npx evenhub-simulator --automation-port 9898 --aid alsa:default http://localhost:5173
 paplay --device=virt some-speech.wav                 # feeds the simulated glasses mic
 curl localhost:9898/api/screenshot/glasses -o glasses.png
+```
+
+## Demo audience
+
+Bots never see other bots' messages, so the demo audience has to be real Telegram accounts.
+
+```bash
+cd tools/seed && cp .env.example .env     # TG_API_ID / TG_API_HASH from https://my.telegram.org
+pnpm --filter @answered/seed login        # once per account, on your machine; prints a session string
+pnpm --filter @answered/seed seed -- --dry-run   # the schedule
+pnpm --filter @answered/seed seed         # after /live: posts the 40-message burst
+pnpm --filter @answered/server host-sim   # plays the host (takes the top question, speaks fixtures/host.wav)
 ```
 
 ## Tests

@@ -196,13 +196,21 @@ host did not take. `pnpm --filter @answered/server eval:answers` re-runs it.
   Checked: the bundle contains the Railway URL and not the dev token.
 - Not done: the phone-side pairing page (the bot command replaced it), and per-message speaker filtering.
 
-## Phase 6 — Recap, seed audience, eval and tuning
+## Phase 6 — Recap, seed audience, eval and tuning ✔ (rehearsal with real accounts pending)
 
-- Recap from an HTML template (no LLM), pinned; public recap page without asker names.
-- `scripts/seed.ts` (GramJS user accounts, ≤ 1 msg/s per account, private test group).
-- `scripts/eval.ts` scorecard: detection ≥ 95 %, merges ≥ 90 %, every scripted answer matched,
-  0 false "answered", median reply ≤ 6 s, 0 × 429.
-- If possible, run one real 10-minute session in a real community and note it for the README.
+- Recap at `/end` (or double, double on the glasses): a template, not a model, so it cannot invent anything.
+  Every answered question with its one-line answer, time and a link to the reply, then everything still
+  open; pinned without a notification; "Full recap" links to `/recap/<session id>`, a public page with no
+  names. Pending messages are classified before the session ends, so last-second questions are included.
+- Asks and people: the glasses show every ask ("14 asked", the spec's demo number); ranking and mentions
+  count unique people, so one account can't push its own question up. Replies say "asked 14 times by 6 people".
+- Spam flagged on the glasses is left out of the recap; questions the host skipped stay in "Still open".
+- Pairing codes refresh before they expire, so glasses can wait on the pairing screen indefinitely.
+- `tools/seed`: `login` (run per audience account on your own machine; prints a session string) and
+  `seed` (posts the 40-message burst from 1-6 accounts, at most once per 1.1 s per account; `--dry-run`).
+  Not run yet: it needs API credentials from my.telegram.org and audience accounts.
+- Scorecard: `docs/SCORECARD.md` (`pnpm --filter @answered/server scorecard`). All model targets met;
+  latency median 6.1 s including the 3 s undo window (3.1 s without).
 
 ## Phase 7 — Ship
 
