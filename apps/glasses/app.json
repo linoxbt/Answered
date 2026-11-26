@@ -10,7 +10,7 @@
     {
       "name": "network",
       "desc": "Connects to the Answered server to receive audience questions and send live audio for answer detection.",
-      "whitelist": ["https://api.answered.app", "wss://api.answered.app"]
+      "whitelist": ["https://server-production-f558e8c1.up.railway.app", "wss://server-production-f558e8c1.up.railway.app"]
     },
     {
       "name": "g2-microphone",
