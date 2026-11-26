@@ -88,7 +88,12 @@ export function screenToText(s: Screen): string {
     case 'lobby':
       return `Group: ${s.group}\n${s.waiting} questions waiting\n\nDouble-press to go live`
     case 'queue':
-      return [`LIVE ${s.clock} | ${s.open} open`, ...s.items.slice(0, 5).map((i) => `${i.n} | ${i.title}`)].join('\n')
+      return [
+        `LIVE ${s.clock} | ${s.open} open`,
+        ...(s.items.length
+          ? s.items.slice(0, 5).map((i) => `${i.n} | ${i.title}`)
+          : ['', s.group ? `Listening in ${s.group}` : 'Listening', 'Waiting for questions...']),
+      ].join('\n')
     case 'taking':
       return `TAKING | ${s.n} asked\n${s.title}\n\n> listening...`
     case 'sending':

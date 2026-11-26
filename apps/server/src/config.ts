@@ -15,6 +15,9 @@ const ConfigSchema = z
     PUBLIC_URL: optional,
     CORS_ORIGIN: z.string().default('*'),
 
+    /** SQLite file. On Railway, point this at a mounted volume (e.g. file:/data/answered.db). */
+    DATABASE_URL: z.string().default('file:./data/answered.db'),
+
     TG_BOT_TOKEN: optional,
     /** Sent back by Telegram in X-Telegram-Bot-Api-Secret-Token on every webhook call. */
     TG_WEBHOOK_SECRET: optional.pipe(

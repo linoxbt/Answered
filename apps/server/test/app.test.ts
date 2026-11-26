@@ -10,7 +10,7 @@ const SECRET = 'test_secret-123'
 const TOKEN = 'dev-token'
 
 function config(overrides: Record<string, string> = {}) {
-  return loadConfig({ NODE_ENV: 'test', LOG_LEVEL: 'silent', TG_WEBHOOK_SECRET: SECRET, GLASSES_DEV_TOKEN: TOKEN, ...overrides })
+  return loadConfig({ NODE_ENV: 'test', LOG_LEVEL: 'silent', DATABASE_URL: ':memory:', TG_WEBHOOK_SECRET: SECRET, GLASSES_DEV_TOKEN: TOKEN, ...overrides })
 }
 
 const closers: Array<() => Promise<unknown>> = []

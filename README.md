@@ -8,8 +8,8 @@ everyone who asked. A question that was only talked around stays open.
 Built for the [Heads Up: Even Realities Hackathon](https://dorahacks.io/hackathon/even-realities/detail)
 (Track 01 · Messaging & News). The build plan is in [docs/PHASES.md](docs/PHASES.md).
 
-> Status: **phase 0 (foundation)**. The glasses app, server and Telegram webhook are
-> connected end to end; product features land in phases 1-6.
+> Status: **phases 0-1 of 0-7 done** (sessions, Telegram bot core, rate-limited outbox).
+> Question detection, speech and answer matching land in phases 2-4.
 
 ![Phase 0 in the Even Hub simulator](docs/img/phase0-simulator.png)
 
@@ -51,6 +51,13 @@ Without glasses or a simulator, check the socket with
    supergroup as an admin (needed for reaction updates).
 2. Deploy the server behind HTTPS and set `PUBLIC_URL`, `TG_BOT_TOKEN`, `TG_WEBHOOK_SECRET`.
 3. `pnpm --filter @answered/server set-webhook`, then send `/ping` in the group.
+4. An admin sends `/live` to start a Q&A and `/end` to close it.
+
+### Deploying on Railway
+
+One service from this repo; Railway runs `pnpm start` (the server). Add a volume mounted at
+`/data`, set `DATABASE_URL=file:/data/answered.db`, and copy the variables from
+`apps/server/.env.example`. Generate a public domain and use it as `PUBLIC_URL`.
 
 ### Packaging
 
@@ -75,7 +82,7 @@ curl localhost:9898/api/screenshot/glasses -o glasses.png
 ## Tests
 
 ```bash
-pnpm test        # protocol parsing, webhook secret check, glasses socket (audio, input, auth)
+pnpm test        # protocol, webhook secret, glasses socket, outbox limits, /live and /end flows, database
 pnpm typecheck
 ```
 

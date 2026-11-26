@@ -7,6 +7,7 @@ import {
   type Gesture,
   type InputSource,
   type MicSource,
+  type Screen,
   type ServerMessage,
 } from '@answered/protocol'
 
@@ -37,6 +38,8 @@ const STATUS_REFRESH_MS = 1000
 export class GlassesHub {
   private readonly connections = new Map<string, Connection>()
   private totalAudioBytes = 0
+  /** What every pair of glasses should show. Undefined = the phase-0 diagnostic screen. */
+  private screen?: Screen
 
   constructor(private readonly log: FastifyBaseLogger) {}
 
@@ -48,6 +51,26 @@ export class GlassesHub {
     return {
       connections: [...this.connections.values()].map((c) => c.stats),
       totalAudioBytes: this.totalAudioBytes,
+      screen: this.screen?.view ?? 'status',
+    }
+  }
+
+  /**
+   * Shows a screen on every connected pair of glasses and on any that connect later.
+   * Until pairing (phase 5) ties glasses to a host, all glasses belong to the one dev host.
+   * Pass undefined to go back to the diagnostic screen.
+   */
+  show(screen: Screen | undefined): void {
+    this.screen = screen
+    for (const conn of this.connections.values()) this.render(conn)
+  }
+
+  private render(conn: Connection): void {
+    if (this.screen) {
+      conn.lastStatusText = undefined
+      this.send(conn, { t: 'screen', ...this.screen })
+    } else {
+      this.pushStatus(conn)
     }
   }
 
@@ -107,7 +130,7 @@ export class GlassesHub {
         log.info({ app: msg.app, version: msg.version, mic: msg.mic }, 'glasses hello')
         // Phase 0: turn the mic on straight away to prove audio reaches the server.
         this.send(conn, { t: 'audio', on: true, source: msg.mic })
-        this.pushStatus(conn)
+        this.render(conn)
         return
       case 'input':
         conn.stats.inputs += 1
@@ -115,13 +138,13 @@ export class GlassesHub {
         log.info({ g: msg.g, src: msg.src, idx: msg.idx }, 'glasses input')
         // Double-tap is the platform's "exit app" gesture; keep it working until the real input map lands.
         if (msg.g === 'double') this.send(conn, { t: 'exit' })
-        else this.pushStatus(conn)
+        else if (!this.screen) this.pushStatus(conn)
         return
       case 'resume':
         log.info('glasses resumed')
         this.send(conn, { t: 'audio', on: true, source: conn.stats.mic ?? 'glasses' })
         conn.lastStatusText = undefined
-        this.pushStatus(conn)
+        this.render(conn)
         return
     }
   }
@@ -130,7 +153,7 @@ export class GlassesHub {
     if (conn.statusTimer) return
     conn.statusTimer = setTimeout(() => {
       conn.statusTimer = undefined
-      this.pushStatus(conn)
+      if (!this.screen) this.pushStatus(conn)
     }, STATUS_REFRESH_MS)
   }
 

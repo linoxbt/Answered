@@ -50,14 +50,24 @@ Anthropic key, OpenAI key (or skip, see phase 2), Railway project.
 | Input from the simulator | Verified: press (with `eventSource` = right temple), swipe up/down, long press, double-tap all reach the server. |
 | `.ehpk` packs | Verified with `evenhub pack` (CLI 0.2.0 stamps `min_app_version` 2.2.10). |
 
-## Phase 1 — Data model, sessions, Telegram core
+## Phase 1 — Data model, sessions, Telegram core ✔ (code complete, awaiting a real bot)
 
-- SQLite schema from the spec (6 tables) behind a small `db.ts`; on Railway, mount a volume
-  or SQLite is wiped on every redeploy.
-- `/live` and `/end` (group admins only, checked with `getChatMember`); opening message.
-- Outbox: one queue per chat, 1 msg/s and 18/min. **Reactions share the same per-chat budget**
-  and sit behind replies; `retry_after` handling.
-- `my_chat_member` handling (bot added, removed, or promoted to admin).
+- SQLite through Node's built-in `node:sqlite` (no native module to build on Railway), versioned
+  migrations, the spec's six tables. Sessions get unguessable ids because they appear in recap URLs.
+  On Railway, mount a volume and set `DATABASE_URL=file:/data/answered.db`, or the data is wiped on every deploy.
+- `/live` and `/end` for group admins only (`getChatMember`; anonymous admins accepted);
+  `/live@botname` works; one open session per group, enforced by a unique index.
+- While live, every text message and caption is captured (commands and other bots skipped); edits
+  update the text and clear its classification. Basic-group → supergroup migration moves the session.
+- `/end` deletes the session's raw messages and transcript segments (the privacy promise);
+  clusters keep titles, counts and answers for the recap. **Phase 6 must build the recap before this purge.**
+- Outbox: one queue per chat, 1 call/s and 18 per rolling minute; reactions share the budget at
+  low priority behind replies; 429 pauses the chat for `retry_after` and retries. Handlers never
+  wait on it, so the webhook always answers Telegram at once.
+- `my_chat_member`: asks to be made admin when added as a member, says ready when promoted,
+  ends the session when removed.
+- Glasses follow the live session (queue screen on `/live`, end screen on `/end`) until pairing.
+- Tests: 35 (fake Bot API through grammY's transformer, fake clock for the outbox).
 
 ## Phase 2 — Question pipeline
 
