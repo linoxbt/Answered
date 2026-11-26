@@ -1,7 +1,13 @@
 {
   "$schema": "https://railway.com/railway.schema.json",
   "build": {
-    "watchPatterns": ["apps/server/**", "packages/protocol/**", "package.json", "pnpm-lock.yaml"]
+    "watchPatterns": [
+      "apps/server/**",
+      "packages/protocol/**",
+      "package.json",
+      "pnpm-lock.yaml",
+      "fixtures/**"
+    ]
   },
   "deploy": {
     "startCommand": "pnpm start",

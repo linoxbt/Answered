@@ -78,13 +78,33 @@ Anthropic key, OpenAI key (or skip, see phase 2), Railway project.
 - Glasses follow the live session (queue screen on `/live`, end screen on `/end`) until pairing.
 - Tests: 35 (fake Bot API through grammY's transformer, fake clock for the outbox).
 
-## Phase 2 — Question pipeline
+## Phase 2 — Question pipeline ✔ (code complete; Haiku runs once ANTHROPIC_API_KEY is set)
 
-- Prefilter, then batched Haiku classification every 2 s (JSON output).
-- Clustering: embeddings + 0.82 / 0.74 thresholds + Haiku "same question?" check between them.
-  Fallback if the OpenAI key is a problem: let Haiku assign clusters directly (fewer than 500 questions).
-- Ranking: `2 × unique_askers + votes + recency bonus`; reactions as votes.
-- `fixtures/questions.json` (40 labelled messages) and a unit test that checks the clusters.
+Decision: **no OpenAI embeddings.** One Claude Haiku 5.5 call per batch both classifies and
+clusters (structured output: `is_question`, `spam`, `canonical`, `cluster` = existing id or
+`new:<label>`). At under 500 questions per session the open-cluster list fits easily in the prompt,
+and it removes a vendor, a key and the 0.74/0.82 threshold tuning.
+
+- Prefilter (no model call): under 6 characters, commands and chatter are dropped; anything with `?`,
+  a leading question word, a mid-sentence "when is / what are …" or "any update" passes.
+- Batching: captured messages wait 2 s, then go in one call (max 30); one batch per session at a time.
+  Thinking off and effort `low` on Haiku keeps it on the latency path.
+- Clusters: unknown or skipped ids from the model become new clusters (a model slip can never drop a
+  question). Title = shortest canonical with ≥ 4 words, ≤ 56 characters. Askers are unique users;
+  answered clusters stay valid targets, so a repeat of an answered question joins it (phase 4 can
+  reply with the existing answer).
+- Votes: a named reaction on any message in a cluster is one vote per person; askers' own reactions
+  don't add (they already count double); bots are ignored; anonymous reaction totals are added.
+- Ranking: `2 × askers + votes + 3 if asked in the last 2 minutes`; ties go to the earlier question.
+- Glasses: top 5 pushed only when the list or counts change, at most every 5 s; header shows elapsed time.
+- Edits: an edited question leaves its cluster and is classified again.
+- Resilience: if Claude fails, refuses or skips a message, the keyword heuristic classifies that batch.
+  The heuristic never false-merges on the fixtures but merges only ~46 % of paraphrases, so the demo needs the key.
+- `fixtures/questions.json`: the spec's 40-message burst with labels. `pnpm --filter @answered/server
+  eval:clusters` prints the scorecard locally; `GET /debug/eval` (Bearer glasses token) runs it on Railway
+  with the server's own key.
+- Spec gap: the seeding plan uses 3–6 Telegram accounts, but askers are unique people, so the demo
+  can show at most 6 askers on one question, not "14 asked". Either recruit more accounts or show asks.
 
 ## Phase 3 — Speech
 

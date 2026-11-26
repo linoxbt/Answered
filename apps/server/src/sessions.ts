@@ -158,7 +158,7 @@ export class SessionService {
   edit(chatId: number, messageId: number, text: string, at: number): boolean {
     const res = this.db
       .prepare(
-        `UPDATE messages SET text = ?, edited_at = ?, is_question = NULL, canonical = NULL, embedding = NULL
+        `UPDATE messages SET text = ?, edited_at = ?, is_question = NULL, spam = 0, canonical = NULL, embedding = NULL
          WHERE chat_id = ? AND message_id = ?`,
       )
       .run(text, at, chatId, messageId)
@@ -170,6 +170,7 @@ export class SessionService {
     tx(this.db, () => {
       this.db.prepare('UPDATE sessions SET chat_id = ? WHERE chat_id = ?').run(toChatId, fromChatId)
       this.db.prepare('UPDATE messages SET chat_id = ? WHERE chat_id = ?').run(toChatId, fromChatId)
+      this.db.prepare('UPDATE votes SET chat_id = ? WHERE chat_id = ?').run(toChatId, fromChatId)
     })
   }
 
@@ -193,6 +194,7 @@ export class SessionService {
       if (!open) return undefined
       const stats = this.stats(open.id)
       this.db.prepare("UPDATE sessions SET status = 'ended', ended_at = ? WHERE id = ?").run(this.now(), open.id)
+      this.db.prepare('DELETE FROM votes WHERE session_id = ?').run(open.id)
       this.db.prepare('DELETE FROM messages WHERE session_id = ?').run(open.id)
       this.db.prepare('DELETE FROM segments WHERE session_id = ?').run(open.id)
       return { session: this.get(open.id)!, stats }

@@ -24,7 +24,7 @@ describe('database', () => {
     db1.close()
 
     const db2 = openDb(url)
-    expect(db2.prepare('PRAGMA user_version').get()).toEqual({ user_version: 1 })
+    expect(db2.prepare('PRAGMA user_version').get()).toEqual({ user_version: 2 })
     expect(new SessionService(db2).open(-100)?.id).toBe(session.id)
     db2.close()
   })

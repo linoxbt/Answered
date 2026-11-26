@@ -18,6 +18,14 @@ const ConfigSchema = z
     /** SQLite file. On Railway, point this at a mounted volume (e.g. file:/data/answered.db). */
     DATABASE_URL: z.string().default('file:./data/answered.db'),
 
+    /** Question classification (phase 2). Without a key the heuristic classifier runs alone. */
+    ANTHROPIC_API_KEY: optional,
+    LLM_CLASSIFY_MODEL: z.string().default('claude-haiku-5-5'),
+    /** How long captured messages wait before being classified together. */
+    CLASSIFY_BATCH_MS: z.coerce.number().int().positive().default(2000),
+    /** Labelled demo messages for GET /debug/eval. */
+    FIXTURES_PATH: z.string().default(new URL('../../../fixtures/questions.json', import.meta.url).pathname),
+
     TG_BOT_TOKEN: optional,
     /** Sent back by Telegram in X-Telegram-Bot-Api-Secret-Token on every webhook call. */
     TG_WEBHOOK_SECRET: optional.pipe(

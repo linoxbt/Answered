@@ -70,6 +70,14 @@ describe('http', () => {
     expect(res.statusCode).toBe(200)
   })
 
+  it('runs the fixture eval behind the glasses token', async () => {
+    const { app } = await start()
+    expect((await app.inject({ method: 'GET', url: '/debug/eval' })).statusCode).toBe(401)
+    const res = await app.inject({ method: 'GET', url: '/debug/eval', headers: { authorization: `Bearer ${TOKEN}` } })
+    expect(res.statusCode).toBe(200)
+    expect(res.json()).toMatchObject({ classifier: 'heuristic', scorecard: { questions: 26, falseMerges: 0 } })
+  })
+
   it('protects /debug/stats with the glasses token', async () => {
     const { app } = await start()
     expect((await app.inject({ method: 'GET', url: '/debug/stats' })).statusCode).toBe(401)

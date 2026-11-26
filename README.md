@@ -8,8 +8,8 @@ everyone who asked. A question that was only talked around stays open.
 Built for the [Heads Up: Even Realities Hackathon](https://dorahacks.io/hackathon/even-realities/detail)
 (Track 01 · Messaging & News). The build plan is in [docs/PHASES.md](docs/PHASES.md).
 
-> Status: **phases 0-1 of 0-7 done** (sessions, Telegram bot core, rate-limited outbox).
-> Question detection, speech and answer matching land in phases 2-4.
+> Status: **phases 0-2 of 0-7 done** (sessions, Telegram bot core, question detection, clustering and ranking).
+> Speech and answer matching land in phases 3-4.
 
 ![Phase 0 in the Even Hub simulator](docs/img/phase0-simulator.png)
 

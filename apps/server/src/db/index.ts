@@ -86,6 +86,22 @@ const MIGRATIONS: string[] = [
   );
   CREATE INDEX segments_session ON segments(session_id, start_s);
   `,
+  /* 2: question pipeline (votes, anonymous reaction counts, cluster ordering) */ `
+  ALTER TABLE clusters ADD COLUMN created_at INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE messages ADD COLUMN anon_reactions INTEGER NOT NULL DEFAULT 0;
+  CREATE INDEX messages_cluster ON messages(cluster_id);
+  CREATE INDEX messages_pending ON messages(session_id, is_question);
+
+  -- A named reaction on a captured message is one vote for that message's cluster.
+  CREATE TABLE votes (
+    session_id  TEXT NOT NULL REFERENCES sessions(id),
+    chat_id     INTEGER NOT NULL,
+    message_id  INTEGER NOT NULL,
+    user_id     INTEGER NOT NULL,
+    PRIMARY KEY (chat_id, message_id, user_id)
+  );
+  CREATE INDEX votes_session ON votes(session_id);
+  `,
 ]
 
 /** Opens (and migrates) the database. Accepts `file:./answered.db`, a plain path, or `:memory:`. */

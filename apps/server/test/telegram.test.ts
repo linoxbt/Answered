@@ -221,3 +221,36 @@ describe('rate limits', () => {
     for (let i = 1; i < at.length; i++) expect(at[i]! - at[i - 1]!).toBeGreaterThanOrEqual(1000)
   })
 })
+
+describe('questions to glasses (phase 2)', () => {
+  it('turns group questions and reactions into a ranked queue on the glasses', async () => {
+    const t = await setup()
+    await t.say(ADMIN, '/live')
+    const q1 = await t.say(ADA, 'When is mainnet launching?')
+    await t.say({ ...ADA, id: 12, first_name: 'Bo' }, 'when is mainnet launching??')
+    await t.say({ ...ADA, id: 13, first_name: 'Cy' }, 'What are the token unlock dates?')
+    await t.say({ ...ADA, id: 14, first_name: 'Di' }, 'gm everyone')
+
+    const reaction = (user: typeof ADA | typeof OTHER_BOT, on: boolean) =>
+      t.post({
+        message_reaction: {
+          chat: GROUP, message_id: q1, user, date: 0,
+          old_reaction: on ? [] : [{ type: 'emoji', emoji: '👍' }],
+          new_reaction: on ? [{ type: 'emoji', emoji: '👍' }] : [],
+        } as never,
+      })
+    await reaction({ ...ADA, id: 77, first_name: 'Voter' }, true)
+    await reaction(OTHER_BOT, true) // bots never vote
+
+    const session = t.sessions.open(GROUP.id)!
+    await t.pipeline.flush(session.id)
+    // Reactions that arrived before classification count once the message joins a cluster.
+    const ranked = t.store.ranked(session.id)
+    expect(ranked.map((c) => [c.askers, c.votes])).toEqual([
+      [2, 1],
+      [1, 0],
+    ])
+    const screen = t.publisher.screen(session.id)
+    expect(screen).toMatchObject({ view: 'queue', open: 2 })
+  })
+})

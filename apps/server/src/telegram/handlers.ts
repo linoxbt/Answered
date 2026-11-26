@@ -1,5 +1,7 @@
 import type { Bot, Context } from 'grammy'
 import type { FastifyBaseLogger } from 'fastify'
+import type { ClusterStore } from '../pipeline/clusters.js'
+import type { Pipeline, QueuePublisher } from '../pipeline/index.js'
 import type { SessionService } from '../sessions.js'
 import type { Outbox } from './outbox.js'
 
@@ -7,6 +9,9 @@ export interface HandlerDeps {
   sessions: SessionService
   outbox: Outbox
   log: FastifyBaseLogger
+  store?: ClusterStore
+  pipeline?: Pipeline
+  publisher?: QueuePublisher
   now?: () => number
 }
 
@@ -122,13 +127,17 @@ export function registerHandlers(bot: Bot, deps: HandlerDeps): void {
       replyTo: ctx.msg.reply_to_message?.message_id,
       at: ctx.msg.date * 1000,
     })
-    if (session) log.debug({ session: session.id, message: ctx.msg.message_id }, 'message captured')
+    if (!session) return
+    log.debug({ session: session.id, message: ctx.msg.message_id }, 'message captured')
+    deps.pipeline?.captured(session.id)
   })
 
   bot.on(['edited_message:text', 'edited_message:caption'], (ctx) => {
     const text = ctx.editedMessage.text ?? ctx.editedMessage.caption ?? ''
     if (sessions.edit(ctx.chat.id, ctx.editedMessage.message_id, text, (ctx.editedMessage.edit_date ?? now() / 1000) * 1000)) {
       log.debug({ message: ctx.editedMessage.message_id }, 'captured message edited')
+      const session = sessions.open(ctx.chat.id)
+      if (session) deps.pipeline?.edited(session.id, ctx.chat.id, ctx.editedMessage.message_id)
     }
   })
 
@@ -151,8 +160,27 @@ export function registerHandlers(bot: Bot, deps: HandlerDeps): void {
     else if (after.status === 'member' && !wasIn) say(chat.id, TEXT.addedNeedsAdmin)
   })
 
-  // Read in later phases (votes, opt-in DMs); logged so the webhook can be checked now.
-  bot.on(['message_reaction', 'message_reaction_count', 'callback_query'], (ctx) => {
-    log.debug({ kind: Object.keys(ctx.update).find((k) => k !== 'update_id') }, 'update noted for later phases')
+  // A named reaction on a captured question is one vote for its cluster (bot must be admin to get these).
+  bot.on('message_reaction', (ctx) => {
+    const r = ctx.messageReaction
+    if (!r.user || r.user.is_bot || !deps.store) return
+    const cluster = deps.store.react(r.chat.id, r.message_id, r.user.id, r.new_reaction.length > 0)
+    const session = cluster ? sessions.open(r.chat.id) : undefined
+    if (session) deps.publisher?.changed(session.id)
+  })
+
+  // Anonymous reactions arrive as grouped totals, sometimes minutes late: a slow signal.
+  bot.on('message_reaction_count', (ctx) => {
+    const r = ctx.messageReactionCount
+    if (!deps.store) return
+    const total = r.reactions.reduce((n, x) => n + x.total_count, 0)
+    const cluster = deps.store.setAnonymousReactions(r.chat.id, r.message_id, total)
+    const session = cluster ? sessions.open(r.chat.id) : undefined
+    if (session) deps.publisher?.changed(session.id)
+  })
+
+  // Read in a later phase (opt-in DMs); logged so the webhook can be checked now.
+  bot.on('callback_query', (ctx) => {
+    log.debug({ data: ctx.callbackQuery.data }, 'callback query noted for later phases')
   })
 }
