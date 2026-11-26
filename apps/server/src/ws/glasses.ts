@@ -178,15 +178,14 @@ export class GlassesHub {
     socket.on('error', (err) => log.warn({ err }, 'glasses socket error'))
 
     if (!viewer) {
-      const issue = () => {
-        if (conn.pairCode) this.pairing.release(conn.pairCode)
+      conn.pairCode = this.pairing.create(conn.stats.id)
+      conn.stats.pairCode = conn.pairCode
+      // Glasses can sit on the pairing screen for a long time: the code on screen stays the same and
+      // stays valid while they are connected (it expires 10 minutes after they disconnect).
+      conn.pairTimer = setInterval(() => {
+        if (conn.pairCode && this.pairing.renew(conn.pairCode)) return
         conn.pairCode = this.pairing.create(conn.stats.id)
         conn.stats.pairCode = conn.pairCode
-      }
-      issue()
-      // Glasses can sit on the pairing screen for a long time: keep the code on screen valid.
-      conn.pairTimer = setInterval(() => {
-        issue()
         this.render(conn)
       }, this.pairRefreshMs)
       log.info('glasses waiting to pair')

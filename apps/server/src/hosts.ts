@@ -106,6 +106,15 @@ export class PairingCodes<T> {
     return entry?.value
   }
 
+  /** Extends a live code's expiry. Returns false if it already expired (or was claimed). */
+  renew(code: string): boolean {
+    this.sweep()
+    const entry = this.codes.get(code)
+    if (!entry) return false
+    entry.expires = this.now() + this.ttlMs
+    return true
+  }
+
   has(code: string): boolean {
     this.sweep()
     return this.codes.has(code)

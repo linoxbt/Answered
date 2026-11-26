@@ -212,19 +212,19 @@ describe('host gestures on paired glasses', () => {
   })
 })
 
-describe('pairing code refresh', () => {
-  it('replaces the code on screen before it expires', async () => {
+describe('pairing code lifetime', () => {
+  it('keeps the same code valid for as long as the glasses wait', async () => {
     const { GlassesHub } = await import('../src/ws/glasses.js')
     const pino = (await import('pino')).default
-    const hub = new GlassesHub(pino({ level: 'silent' }), {}, 200) // 200 ms codes, refreshed every 100 ms
+    const hub = new GlassesHub(pino({ level: 'silent' }), {}, 200) // 200 ms codes, renewed every 100 ms
     const sent: string[] = []
     const socket = { readyState: 1, OPEN: 1, send: (d: string) => sent.push(d), on: () => {}, close: () => {} }
     hub.attach(socket as never, undefined)
     const codes = () => sent.map((d) => JSON.parse(d)).filter((m) => m.view === 'pair').map((m) => m.code as string)
-    await until(() => new Set(codes()).size >= 3)
-    const latest = codes().at(-1)!
-    expect(hub.pairingWaiting(latest)).toBe(true)
-    expect(hub.pairingWaiting(codes()[0]!)).toBe(codes()[0] === latest)
+    await until(() => codes().length === 1)
+    await new Promise((r) => setTimeout(r, 700)) // several lifetimes
+    expect(new Set(codes()).size).toBe(1)
+    expect(hub.pairingWaiting(codes()[0]!)).toBe(true)
     hub.closeAll()
   })
 })
