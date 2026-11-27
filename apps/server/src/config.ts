@@ -29,7 +29,7 @@ const ConfigSchema = z
     /** Answer judge (phase 4). Uses ANTHROPIC_API_KEY; without it only manual "answered" presses work. */
     LLM_JUDGE_MODEL: z.string().default('claude-sonnet-5-5'),
     /** Undo window before an answer is posted to the group. */
-    UNDO_MS: z.coerce.number().int().min(0).default(3000),
+    UNDO_MS: z.coerce.number().int().min(0).default(2000),
 
     /** Speech-to-text (phase 3). Without a key, glasses audio is counted but not transcribed. */
     DEEPGRAM_API_KEY: optional,
