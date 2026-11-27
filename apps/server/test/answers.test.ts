@@ -147,6 +147,17 @@ describe('answer loop', () => {
     expect(t.store.assignable(t.session.id)[0]!.status).toBe('taken')
   })
 
+  it('an answer finished during "Still open" is judged again with the full transcript', async () => {
+    const t = await setup(new ScriptedJudge(answersMainnet))
+    t.ask(11, 'Ada', 'wen mainnet', MAINNET, 'm')
+    t.controller.input('press')
+    t.say('Great question, and a lot of you asked it.') // a pause before the actual answer
+    await until(() => t.view() === 'still_open')
+    t.say('Mainnet ships in q one.') // still inside the flash
+    await until(() => t.view() === 'sending')
+    await until(() => t.sent().length === 1)
+  })
+
   it('rejects an "answered" verdict whose quote is not in the transcript', async () => {
     const liar = new ScriptedJudge((q) => (q.title === MAINNET ? { summary: 'Mainnet is in Q1.', quote: 'Mainnet launches in Q1 for sure', confidence: 0.99 } : null))
     const t = await setup(liar)

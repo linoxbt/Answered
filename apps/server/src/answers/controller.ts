@@ -248,7 +248,13 @@ export class HostController {
   // ------------------------------------------------------------ judging
 
   private async utteranceEnded(sessionId: string): Promise<void> {
-    const mode = this.modes.get(sessionId)
+    let mode = this.modes.get(sessionId)
+    // The host kept talking through "Still open": go back to the question and judge the longer answer.
+    if (mode?.kind === 'flash' && mode.next.kind === 'taking') {
+      clearTimeout(mode.timer)
+      this.set(sessionId, mode.next)
+      mode = mode.next
+    }
     if (mode?.kind !== 'taking' || !this.o.judge) return
     const running = this.judging.get(sessionId)
     if (running) {
