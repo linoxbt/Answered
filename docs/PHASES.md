@@ -212,10 +212,17 @@ host did not take. `pnpm --filter @answered/server eval:answers` re-runs it.
 - Scorecard: `docs/SCORECARD.md` (`pnpm --filter @answered/server scorecard`). All model targets met;
   latency median 6.1 s including the 3 s undo window (3.1 s without).
 
-## Phase 7 — Ship
+## Phase 7 — Ship (done)
 
 - README: what it does, setup, architecture, "what existed before 23 Nov", eval results,
   privacy (audio not stored, transcripts and messages deleted at session end), 5 feature requests.
 - Demo video (≤ 3 min) following the spec's script; `.ehpk` on a GitHub release.
 - DoraHacks submission: Track 01, also eligible for Best Telegram integration and the Grand Prize.
 - Check `git log -p | grep -i key` before making the repo public; keep the server up through 3 Dec.
+
+### Phase 7 result
+
+- Demo video: [docs/demo/answered-demo.mp4](demo/answered-demo.mp4) (2:51, one continuous take on the live server).
+- Glasses package: [release/answered.ehpk](../release/answered.ehpk).
+- Fix found while recording: if the host paused mid-answer, the rest of the answer arrived during the
+  "Still open" flash and was ignored. The controller now returns to the question and judges the full answer.

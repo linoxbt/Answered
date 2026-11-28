@@ -8,8 +8,24 @@ everyone who asked. A question that was only talked around stays open.
 Built for the [Heads Up: Even Realities Hackathon](https://dorahacks.io/hackathon/even-realities/detail)
 (Track 01 · Messaging & News). The build plan is in [docs/PHASES.md](docs/PHASES.md).
 
-> Status: **phases 0-6 of 0-7 done**: pairing, glasses screens, question ranking, spoken answers,
-> Telegram replies and the pinned recap all work end to end. Results: [docs/SCORECARD.md](docs/SCORECARD.md).
+> Status: **all phases done** (0-7). Pairing, glasses screens, question ranking, spoken answers,
+> Telegram replies and the pinned recap all work end to end on the live server. Results: [docs/SCORECARD.md](docs/SCORECARD.md).
+
+## Demo video (2:51)
+
+[![Answered demo: Telegram group on the left, the G2 display on the right](docs/img/demo-thumb.png)](https://github.com/linoxbt/Answered/raw/main/docs/demo/answered-demo.mp4)
+
+[Watch / download the demo (MP4)](https://github.com/linoxbt/Answered/raw/main/docs/demo/answered-demo.mp4). One continuous
+take against the deployed server: two real Telegram accounts post a burst of questions, the host takes
+them on the glasses and answers out loud, the bot replies in the thread tagging everyone who asked, a
+talked-around question stays open, and the session ends with a pinned recap. The host's voice is a
+recorded clip played into the simulated glasses' microphone; nothing else is staged.
+
+## Install on G2
+
+Download [`release/answered.ehpk`](release/answered.ehpk) and sideload it through the Even Hub developer
+flow (`evenhub upload answered.ehpk`), or build it yourself (see [Packaging](#packaging)). It connects to the
+hosted server; open it, then send `/pair <code>` in your Telegram group as an admin, after adding the bot.
 
 ![Answered's screens in the Even Hub simulator](docs/img/glasses-screens.png)
 
@@ -117,6 +133,28 @@ pnpm --filter @answered/seed seed -- --dry-run   # the schedule
 pnpm --filter @answered/seed seed         # after /live: posts the 40-message burst
 pnpm --filter @answered/server host-sim   # plays the host (takes the top question, speaks fixtures/host.wav)
 ```
+
+## Privacy
+
+- Glasses audio is streamed to Deepgram for transcription only while a question is being taken; the server does not store audio.
+- When a session ends, its raw Telegram messages, votes and transcript segments are deleted. What stays is the recap:
+  question titles, answer summaries and timestamps. The public recap page shows no names.
+- Pairing tokens are random per host, rotate on every pairing, and a long press on the glasses forgets them.
+
+## Feature requests for Even Realities
+
+Things we hit while building this, in order of how much they would have helped:
+
+1. **Update list items without rebuilding the page.** Changing a list container's items needs `rebuildPageContainer`,
+   which flickers, so the live queue is throttled to one rebuild every 5 s. An in-place `listContainerUpgrade` would fix it.
+2. **Selection-change events on lists.** The ring scrolls the native list, but the app only learns the index on a press.
+   Knowing the highlighted item would let the app pre-load it (and show askers or context in a header).
+3. **Basic text emphasis.** One size and weight for everything; a bold or larger line would make "5 asked" and the
+   selected question readable at a glance.
+4. **On-device end-of-speech (VAD) events from `audioControl`.** We stream raw PCM and wait ~1.5 s for the cloud to detect
+   the end of speech; a local signal would cut latency and bandwidth.
+5. **First-class headless simulator.** Documented automation API, a virtual audio input (we used a PulseAudio null sink),
+   and screenshots of the display only. It would make CI tests and demo videos much easier.
 
 ## Tests
 
