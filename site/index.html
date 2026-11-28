@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Answered: live Telegram Q&amp;A on Even Realities G2</title>
+<meta name="description" content="Answered puts your Telegram audience on Even Realities G2 glasses. Repeat questions merged and ranked, answer out loud, and the bot replies to everyone who asked.">
+<meta property="og:title" content="Answered: live Telegram Q&amp;A on Even Realities G2">
+<meta property="og:description" content="Answer your Telegram audience out loud, once. The bot replies to everyone who asked.">
+<meta property="og:image" content="https://answered-mu.vercel.app/assets/poster.png">
+<meta property="og:url" content="https://answered-mu.vercel.app">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="assets/logo.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{--bg:#090d12;--panel:#0f1714;--line:#20322a;--text:#e8eef2;--muted:#9fb2ab;--hud:#6fe873;--hud-dim:#3f8f47;--red:#ff6b6b}
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{background:var(--bg);color:var(--text);font-family:Inter,system-ui,sans-serif;line-height:1.55;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+  body:before{content:"";position:fixed;inset:0;z-index:-1;background:radial-gradient(900px 600px at 85% -5%,#123322 0%,transparent 60%),radial-gradient(800px 600px at -10% 40%,#0e1d2b 0%,transparent 60%)}
+  a{color:inherit;text-decoration:none}
+  .wrap{max-width:1160px;margin:0 auto;padding:0 24px}
+  nav{position:sticky;top:0;z-index:10;backdrop-filter:blur(14px);background:rgba(9,13,18,.72);border-bottom:1px solid rgba(32,50,42,.6)}
+  nav .wrap{display:flex;align-items:center;justify-content:space-between;height:64px}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:800;font-size:20px;letter-spacing:-.02em}
+  .brand img{width:30px;height:30px;border-radius:8px}
+  .brand i{font-style:normal;color:var(--hud)}
+  nav .links{display:flex;gap:28px;align-items:center;font-size:15px;color:var(--muted)}
+  nav .links a:hover{color:var(--text)}
+  .btn{display:inline-flex;align-items:center;gap:10px;padding:13px 22px;border-radius:12px;font-weight:600;font-size:16px;transition:transform .15s,box-shadow .15s,background .15s}
+  .btn:hover{transform:translateY(-1px)}
+  .btn.primary{background:var(--hud);color:#06210c;box-shadow:0 8px 30px rgba(111,232,115,.25)}
+  .btn.primary:hover{box-shadow:0 10px 40px rgba(111,232,115,.4)}
+  .btn.ghost{border:1px solid var(--line);background:rgba(15,23,20,.6)}
+  .btn.ghost:hover{border-color:#356b4a}
+  .btn.small{padding:9px 16px;font-size:14px}
+  .hero{padding:90px 24px 70px;display:grid;grid-template-columns:1.05fr 1fr;gap:56px;align-items:center}
+  .eyebrow{display:inline-flex;align-items:center;gap:8px;font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:var(--hud);font-weight:700;margin-bottom:22px}
+  .eyebrow:before{content:"";width:8px;height:8px;border-radius:50%;background:#ff4d4d;box-shadow:0 0 10px #ff4d4d}
+  h1{font-size:clamp(40px,5.4vw,66px);line-height:1.04;letter-spacing:-.035em;font-weight:800}
+  h1 em{font-style:normal;color:var(--hud)}
+  .lead{font-size:19px;color:var(--muted);margin:24px 0 34px;max-width:540px}
+  .ctas{display:flex;gap:14px;flex-wrap:wrap}
+  .stack{position:relative;height:540px}
+  .hud{background:#000;border-radius:16px;box-shadow:0 0 0 1px #24513a,0 0 70px rgba(80,220,110,.14),0 30px 80px rgba(0,0,0,.6);overflow:hidden}
+  .hud img{display:block;width:100%;height:auto}
+  .stack .hud{position:absolute;right:0;top:28px;width:94%;z-index:2}
+  .stack .phone{position:absolute;left:0;top:250px;width:44%;z-index:3;border-radius:18px;overflow:hidden;box-shadow:0 0 0 1px #2b3d36,0 30px 80px rgba(0,0,0,.6)}
+  .stack .phone img{display:block;width:100%}
+  .tag{position:absolute;font-size:12px;letter-spacing:.12em;text-transform:uppercase;font-weight:700;color:var(--muted);background:rgba(9,13,18,.85);border:1px solid var(--line);padding:6px 10px;border-radius:8px;z-index:4}
+  section.wrap{padding-top:90px;padding-bottom:90px}
+  h2{font-size:clamp(30px,3.6vw,44px);letter-spacing:-.03em;line-height:1.1;font-weight:800}
+  .sub{color:var(--muted);font-size:18px;margin-top:14px;max-width:680px}
+  .problem{display:grid;grid-template-columns:1fr 1fr;gap:56px;align-items:center}
+  .problem ul{list-style:none;margin-top:30px}
+  .problem li{padding-left:30px;position:relative;margin:16px 0;font-size:18px;color:#c6d3ce}
+  .problem li:before{content:"";position:absolute;left:0;top:10px;width:11px;height:11px;border-radius:50%;background:var(--red)}
+  .chat{display:flex;flex-direction:column;gap:10px;-webkit-mask-image:linear-gradient(to bottom,transparent,#000 35%)}
+  .chat div{align-self:flex-start;background:#1a252e;padding:10px 16px;border-radius:14px;font-size:16px}
+  .chat div.me{align-self:flex-end;background:#25543a}
+  .chat div.scam{color:#ff9a9a}
+  .arrow{display:flex;align-items:center;gap:14px;margin-top:22px;color:var(--muted);font-size:15px}
+  .arrow .hud{flex:1;padding:14px 18px;color:var(--hud);font-weight:300;font-size:18px;font-family:Inter}
+  .video{margin-top:40px;border-radius:20px;overflow:hidden;box-shadow:0 0 0 1px var(--line),0 40px 100px rgba(0,0,0,.6);background:#000}
+  .video video{display:block;width:100%;height:auto}
+  .steps{display:grid;grid-template-columns:repeat(3,1fr);gap:22px;margin-top:48px}
+  .step{background:rgba(15,23,20,.7);border:1px solid var(--line);border-radius:18px;padding:22px;display:flex;flex-direction:column;gap:16px}
+  .step .n{font-size:13px;letter-spacing:.16em;color:var(--hud);font-weight:700;text-transform:uppercase}
+  .step h3{font-size:22px;letter-spacing:-.02em}
+  .step p{color:var(--muted);font-size:15.5px}
+  .step .hud{border-radius:12px;margin-top:auto}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:56px;align-items:center}
+  table{width:100%;border-collapse:collapse;margin-top:30px;font-size:16px}
+  td{padding:14px 0;border-bottom:1px solid var(--line);vertical-align:top}
+  td:first-child{color:var(--hud);font-weight:600;width:42%}
+  td:last-child{color:#c6d3ce}
+  th{text-align:left;font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);padding-bottom:8px}
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:22px;margin-top:44px}
+  .stat{border-top:1px solid var(--line);padding-top:22px}
+  .stat b{display:block;font-size:52px;letter-spacing:-.04em;color:var(--hud);font-weight:800;line-height:1}
+  .stat span{display:block;color:var(--muted);margin-top:10px;font-size:15.5px}
+  .built{display:flex;flex-wrap:wrap;gap:12px;margin-top:34px}
+  .built span{border:1px solid var(--line);background:rgba(15,23,20,.7);border-radius:999px;padding:9px 16px;font-size:15px;color:#c6d3ce}
+  .start{display:grid;grid-template-columns:repeat(3,1fr);gap:22px;margin-top:44px}
+  .start div{background:rgba(15,23,20,.7);border:1px solid var(--line);border-radius:18px;padding:26px}
+  .start b{display:inline-flex;width:34px;height:34px;border-radius:50%;align-items:center;justify-content:center;background:var(--hud);color:#06210c;font-weight:800;margin-bottom:14px}
+  .start h3{font-size:19px;margin-bottom:8px}
+  .start p{color:var(--muted);font-size:15.5px}
+  code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.92em;background:#13201a;border:1px solid var(--line);padding:2px 7px;border-radius:6px;color:var(--hud)}
+  .cta-band{margin:30px 0 90px;border-radius:24px;padding:56px;text-align:center;background:radial-gradient(600px 300px at 50% 0%,#17402a,transparent 70%),var(--panel);border:1px solid var(--line)}
+  .cta-band .ctas{justify-content:center;margin-top:30px}
+  footer{border-top:1px solid var(--line);padding:30px 0 50px;color:var(--muted);font-size:14px}
+  footer .wrap{display:flex;justify-content:space-between;gap:20px;flex-wrap:wrap}
+  footer a{color:#c6d3ce}
+  .reveal{opacity:0;transform:translateY(18px);transition:opacity .7s ease,transform .7s ease}
+  .reveal.in{opacity:1;transform:none}
+  @media (max-width:900px){
+    .hero,.problem,.grid2{grid-template-columns:1fr}
+    .hero{padding-top:50px}
+    .stack{height:auto;display:flex;flex-direction:column;gap:16px}
+    .stack .hud,.stack .phone{position:relative;width:100%;top:auto}
+    .stack .phone{width:70%;align-self:center}
+    .tag{display:none}
+    .steps,.start{grid-template-columns:1fr}
+    .stats{grid-template-columns:1fr 1fr}
+    nav .links a:not(.btn){display:none}
+    section.wrap{padding-top:60px;padding-bottom:60px}
+    .cta-band{padding:36px 22px}
+  }
+</style>
+</head>
+<body>
+<nav>
+  <div class="wrap">
+    <a class="brand" href="#"><img src="assets/logo.png" alt=""><span>Answered<i>.</i></span></a>
+    <div class="links">
+      <a href="#how">How it works</a>
+      <a href="#demo">Demo</a>
+      <a href="https://github.com/linoxbt/Answered">GitHub</a>
+      <a class="btn primary small" href="https://t.me/answereddbot">Add to Telegram</a>
+    </div>
+  </div>
+</nav>
+
+<header class="wrap hero">
+  <div>
+    <div class="eyebrow">Live Q&amp;A for Telegram · Even Realities G2</div>
+    <h1>Answer your audience <em>out loud</em>, once.</h1>
+    <p class="lead">Answered puts your Telegram group's questions on your G2 display, merged and ranked. Take one with the ring, just answer it, and the bot replies in the group to everyone who asked.</p>
+    <div class="ctas">
+      <a class="btn primary" href="#demo">▶&nbsp; Watch the demo</a>
+      <a class="btn ghost" href="https://t.me/answereddbot">Add @answereddbot</a>
+    </div>
+  </div>
+  <div class="stack">
+    <span class="tag" style="right:12px;top:0">On the glasses</span>
+    <div class="hud"><img src="assets/hud-queue.png" alt="G2 display: a ranked question queue, 5 people asked when mainnet launches"></div>
+    <div class="phone"><img src="assets/tg-reply.png" alt="Telegram: the bot's threaded reply tagging everyone who asked"></div>
+    <span class="tag" style="left:12px;top:236px">In the group</span>
+  </div>
+</header>
+
+<section class="wrap problem reveal">
+  <div>
+    <h2>AMAs drown in their own chat.</h2>
+    <ul>
+      <li>The same question asked a dozen different ways</li>
+      <li>The host is talking, so they scroll and miss most of it</li>
+      <li>"gm", repeats and scam links bury the rest</li>
+      <li>People who asked never learn their question was answered</li>
+    </ul>
+  </div>
+  <div>
+    <div class="chat">
+      <div>When is mainnet launching?</div><div class="me">gm everyone</div><div>wen mainnet ser??</div>
+      <div>What's the token unlock schedule?</div><div class="me">any update on the mainnet date?</div>
+      <div class="scam">DM me for a 100x presale whitelist spot</div><div>mainnet when?</div><div class="me">Is mainnet Q1 or Q2?</div>
+    </div>
+    <div class="arrow">becomes&nbsp;→<div class="hud">5 | When is mainnet launching?</div></div>
+  </div>
+</section>
+
+<section id="demo" class="wrap reveal">
+  <h2>See it run, start to finish.</h2>
+  <p class="sub">One continuous take on the live server with two real Telegram accounts: the group on the left, the G2 display on the right. 2 min 51 s.</p>
+  <div class="video"><video controls preload="metadata" playsinline poster="assets/poster.png" src="assets/answered-demo.mp4"></video></div>
+</section>
+
+<section id="how" class="wrap reveal">
+  <h2>How it works</h2>
+  <p class="sub">Pair once, press once to go live, then just talk.</p>
+  <div class="steps">
+    <div class="step"><div class="n">1 · Pair</div><h3>A code, one command</h3><p>The glasses show a 4-digit code. A group admin sends <code>/pair 1234</code> to the bot. No accounts, no phone app.</p><div class="hud"><img src="assets/hud-lobby.png" alt="G2 lobby screen"></div></div>
+    <div class="step"><div class="n">2 · Collect</div><h3>Questions, not noise</h3><p>Claude Haiku drops chatter and spam and merges repeats. One line per question, ranked by how many people asked.</p><div class="hud"><img src="assets/hud-queue.png" alt="G2 question queue"></div></div>
+    <div class="step"><div class="n">3 · Answer</div><h3>Take it, say it</h3><p>Press to take the top question and answer out loud. The G2 mic streams to Deepgram as you speak.</p><div class="hud"><img src="assets/hud-taking.png" alt="G2 taking screen, listening"></div></div>
+    <div class="step"><div class="n">4 · Verify</div><h3>No fake "answered"</h3><p>Claude Sonnet checks you really answered it, quoting the transcript. You get a 2-second undo before anything is posted.</p><div class="hud"><img src="assets/hud-sending.png" alt="G2 sending screen with a 2 second undo"></div></div>
+    <div class="step"><div class="n">5 · Reply</div><h3>Everyone who asked, tagged</h3><p>One threaded reply to the original message, with a summary and an @mention for every asker. Non-answers stay open.</p><div class="hud"><img src="assets/hud-answered.png" alt="G2 confirmation: sent to 2 people"></div></div>
+    <div class="step"><div class="n">6 · Recap</div><h3>Pinned when you're done</h3><p>A double press ends the session. The recap of what was answered and what is still open is posted and pinned.</p><div class="hud"><img src="assets/hud-ended.png" alt="G2 session ended: 2 answered, 1 still open"></div></div>
+  </div>
+</section>
+
+<section class="wrap grid2 reveal">
+  <div>
+    <h2>Run the whole call from the ring.</h2>
+    <p class="sub">Every action is one gesture, so your hands and eyes stay on the audience.</p>
+    <table>
+      <tr><th>Gesture</th><th>What it does</th></tr>
+      <tr><td>Press</td><td>Go live · take the selected question · mark it answered · send now</td></tr>
+      <tr><td>Swipe</td><td>Scroll the queue · skip a question · cancel a reply</td></tr>
+      <tr><td>Double press</td><td>Put a question back · end the session and post the recap</td></tr>
+      <tr><td>Long press</td><td>Flag spam: it leaves the queue and is deleted from the group</td></tr>
+    </table>
+  </div>
+  <div class="hud" style="border-radius:18px;overflow:hidden;box-shadow:0 0 0 1px #2b3d36,0 30px 80px rgba(0,0,0,.6)"><img src="assets/tg-recap.png" alt="Telegram: the pinned recap with answered and open questions" style="display:block;width:100%"></div>
+</section>
+
+<section class="wrap reveal">
+  <h2>Measured, not promised.</h2>
+  <p class="sub">From the scorecard in the repo, 3 runs against the real models.</p>
+  <div class="stats">
+    <div class="stat"><b>100%</b><span>of questions detected in a 40-message AMA burst</span></div>
+    <div class="stat"><b>0</b><span>false merges of different questions</span></div>
+    <div class="stat"><b>30/30</b><span>answers judged correctly, with no false "answered"</span></div>
+    <div class="stat"><b>~6 s</b><span>from the end of speech to the posted reply, including the undo window</span></div>
+  </div>
+  <div class="built"><span>Even Hub SDK</span><span>Claude Haiku 5.5</span><span>Claude Sonnet 5.5</span><span>Deepgram Nova-3</span><span>Telegram Bot API · grammY</span><span>Fastify + WebSockets</span><span>Railway</span></div>
+</section>
+
+<section class="wrap reveal">
+  <h2>Get started</h2>
+  <div class="start">
+    <div><b>1</b><h3>Install the G2 app</h3><p>Sideload <a href="https://github.com/linoxbt/Answered/raw/main/release/answered.ehpk"><code>answered.ehpk</code></a> through Even Hub.</p></div>
+    <div><b>2</b><h3>Add the bot</h3><p>Add <a href="https://t.me/answereddbot"><code>@answereddbot</code></a> to your Telegram group as an admin.</p></div>
+    <div><b>3</b><h3>Pair and go live</h3><p>Send <code>/pair</code> with the code on your glasses, then press the ring.</p></div>
+  </div>
+  <div class="cta-band">
+    <h2>No question lost.</h2>
+    <p class="sub" style="margin:14px auto 0">Heads up, hands free. Built for the Heads Up: Even Realities hackathon, Track 01.</p>
+    <div class="ctas"><a class="btn primary" href="https://t.me/answereddbot">Add @answereddbot</a><a class="btn ghost" href="https://github.com/linoxbt/Answered">View on GitHub</a></div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <span>© 2026 Answered · Audio is never stored; messages and transcripts are deleted when a session ends.</span>
+    <span><a href="https://github.com/linoxbt/Answered">GitHub</a> · <a href="https://dorahacks.io/hackathon/even-realities/detail">Heads Up hackathon</a></span>
+  </div>
+</footer>
+<script>
+  const io = new IntersectionObserver((es) => es.forEach((e) => e.isIntersecting && (e.target.classList.add('in'), io.unobserve(e.target))), { threshold: 0.12 })
+  document.querySelectorAll('.reveal').forEach((el) => io.observe(el))
+</script>
+</body>
+</html>

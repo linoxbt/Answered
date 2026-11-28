@@ -11,6 +11,8 @@ Built for the [Heads Up: Even Realities Hackathon](https://dorahacks.io/hackatho
 > Status: **all phases done** (0-7). Pairing, glasses screens, question ranking, spoken answers,
 > Telegram replies and the pinned recap all work end to end on the live server. Results: [docs/SCORECARD.md](docs/SCORECARD.md).
 
+Website: **https://answered-mu.vercel.app**
+
 ## Demo video (2:51)
 
 [![Answered demo: Telegram group on the left, the G2 display on the right](docs/img/demo-thumb.png)](https://github.com/linoxbt/Answered/raw/main/docs/demo/answered-demo.mp4)

@@ -1,6 +1,7 @@
 **Answered** puts a Telegram audience on the host's Even Realities G2 display. Questions are merged and ranked on the glasses, the host answers them out loud, and the bot replies in the group to everyone who asked.
 
-🎬 **Demo video (2:51):** https://github.com/linoxbt/Answered/raw/main/docs/demo/answered-demo.mp4
+🎬 **Demo video (2:51):** https://answered-mu.vercel.app/assets/answered-demo.mp4
+🌐 **Website:** https://answered-mu.vercel.app
 💻 **Code:** https://github.com/linoxbt/Answered
 🤖 **Bot:** [@answereddbot](https://t.me/answereddbot)
 
